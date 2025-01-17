@@ -254,9 +254,12 @@ def process_user_constraints(source_db, target_db):
                                                                           value=p_value)
                         if error:
                             exit("Failed to add constant for constraint: " + constraint_name)
-                    ratio_parsed = ratio["parsed_value"].values
-                    if len(ratio_parsed) > 1:
-                        print("Constraint ratio parameter contains a list, FlexTool handles only constants, using 1st value for: " + constraint_name)
+                    if isinstance(ratio["parsed_value"], float):
+                        ratio_parsed = [ratio["parsed_value"]]
+                    else:
+                        ratio_parsed = ratio["parsed_value"].values
+                        if len(ratio_parsed) > 1:
+                            print("Constraint ratio parameter contains a list, FlexTool handles only constants, using 1st value for: " + constraint_name)
                     first_flow_coefficient = round(ratio_parsed[0] / (ratio_parsed[0] + 1), 6)
                     flow_coefficient_map = api.Map(indexes=[constraint_name], values=[first_flow_coefficient], index_name="constraint")
                     p_value, p_type = api.to_database(flow_coefficient_map)
@@ -269,9 +272,9 @@ def process_user_constraints(source_db, target_db):
                         entity_class_name = "unit__outputNode"
                     else:
                         flow_byname_object = source_db.get_entity_item(entity_class_name="node__to_unit",
-                                                                       entity_byname=(unit_flow__unit_flow["entity_byname"][1], unit_flow__unit_flow["entity_byname"][0]))
+                                                                       entity_byname=(unit_flow__unit_flow["entity_byname"][0], unit_flow__unit_flow["entity_byname"][1]))
                         if flow_byname_object:
-                            flow_byname = (flow_byname_object["entity_byname"][3], flow_byname_object["entity_byname"][2])
+                            flow_byname = (flow_byname_object["entity_byname"][1], flow_byname_object["entity_byname"][0])
                             entity_class_name = "unit__inputNode"
                     if flow_byname:
                         added, error = target_db.add_parameter_value_item(entity_class_name=entity_class_name,
@@ -289,9 +292,9 @@ def process_user_constraints(source_db, target_db):
                             entity_class_name = "unit__outputNode"
                         else:
                             flow_byname_object = source_db.get_entity_item(entity_class_name="node__to_unit",
-                                                                           entity_byname=(unit_flow__unit_flow["entity_byname"][3], unit_flow__unit_flow["entity_byname"][2]))
+                                                                           entity_byname=(unit_flow__unit_flow["entity_byname"][2], unit_flow__unit_flow["entity_byname"][3]))
                             if flow_byname_object:
-                                flow_byname = (flow_byname_object["entity_byname"][3], flow_byname_object["entity_byname"][2])
+                                flow_byname = (flow_byname_object["entity_byname"][1], flow_byname_object["entity_byname"][0])
                                 entity_class_name = "unit__inputNode"
                         if flow_byname:
                             second_flow_coefficient = -(1 - first_flow_coefficient)
@@ -304,7 +307,7 @@ def process_user_constraints(source_db, target_db):
                                                                               type=p_type,
                                                                               value=p_value)
                             if error:
-                                exit("Failed to add constraint_flow_coefficient for " + str(flow_byname))
+                                exit("Failed to add constraint_flow_coefficient for " + str(flow_byname) + ". " + error)
                         else:
                             print("Failed to find unit__to_node or node__to_unit for " + constraint_name)
                     else:
@@ -430,7 +433,7 @@ def create_timeline(source_db, target_db):
                                                                    entity_byname=(period_entity["name"], ),
                                                                    parameter_definition_name="years_represented"):
                 period_years[y_rep_value["alternative_name"]].append(period_entity["name"])
-                years_reped = api.from_database(y_rep_value["value"], y_rep_value["type"]).value.years
+                years_reped = api.from_database(y_rep_value["value"], y_rep_value["type"])
                 years_represented[y_rep_value["alternative_name"]].append(years_reped)
 
         for alt, value in period_years.items():
