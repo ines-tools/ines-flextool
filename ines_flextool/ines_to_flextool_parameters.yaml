@@ -45,8 +45,8 @@ unit__to_node:
     conversion_coefficient: coefficient
     other_operational_cost: other_operational_cost
     ramp_cost: ramp_cost
-    ramp_limit_up: ramp_limit_up
-    ramp_limit_down: ramp_limit_down
+    ramp_limit_up: ramp_speed_up
+    ramp_limit_down: ramp_speed_down
     constraint_flow_coefficient: constraint_flow_coefficient
   profile:
     profile_limit_upper: [profile, 1, [[1]]]
@@ -58,8 +58,8 @@ node__to_unit:
     conversion_coefficient: [coefficient, 1, [[2], [1]]]
     other_operational_cost: [other_operational_cost, 1, [[2], [1]]]
     ramp_cost: [ramp_cost, 1, [[2], [1]]]
-    ramp_limit_up: [ramp_limit_up, 1, [[2], [1]]]
-    ramp_limit_down: [ramp_limit_down, 1, [[2], [1]]]
+    ramp_limit_up: [ramp_speed_up, 1, [[2], [1]]]
+    ramp_limit_down: [ramp_speed_down, 1, [[2], [1]]]
     constraint_flow_coefficient: [constraint_flow_coefficient, 1, [[2], [1]]]
   profile:
     profile_limit_upper: [profile, 1, [[2]]]

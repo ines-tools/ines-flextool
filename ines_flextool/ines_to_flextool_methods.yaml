@@ -57,8 +57,6 @@ link:
 unit__to_node: 
   unit__outputNode: 
     ramp_method: 
-      no_constraint: 
-        ramp_method: 'none'
       ramp_limit: 
         ramp_method: 'ramp_limit'
       ramp_cost: 
