@@ -6,21 +6,26 @@
 system:
   model:
     discount_rate: discount_rate
+
+constraint:
+  constraint:
+    constant: constant
+
 node: 
   node:
     flow_annual: annual_flow
     flow_profile: inflow
     penalty_upward: penalty_up
     penalty_downward: penalty_down
-    storage_existing: existing
     storage_capacity: virtual_unitsize
     storage_interest_rate: interest_rate
     storage_fixed_cost: fixed_cost
     storage_lifetime: lifetime
-    storage_investment_cost: invest_cost
+    storage_investment_cost: [invest_cost, 0.001]
     storage_salvage_value: salvage_value
   commodity:
     commodity_price: price
+    co2_content: co2_content
 
 unit: 
   unit:
@@ -29,18 +34,41 @@ unit:
     interest_rate: interest_rate
     lifetime: lifetime
     startup_cost: startup_cost
-    shutdown_cost: shutdown_cost
+    constraint_unit_count_coefficient: constraint_capacity_coefficient
+    #shutdown_cost: shutdown_cost
 
 link:
   connection:
     availability: availability
+    capacity: virtual_unitsize
+    links_existing : existing
+    links_max_cumulative: cumulative_max_capacity
+    links_min_cumulative: cumulative_min_capacity
+    links_invest_max_period: invest_max_period
+    links_invest_min_period: invest_min_period
     efficiency: efficiency
     interest_rate: interest_rate
-    investment_cost: invest_cost
+    investment_cost: [invest_cost, 0.001]
     fixed_cost: fixed_cost
     lifetime: lifetime
     salvage_value: salvage_value
     operational_cost: other_operational_cost
+
+set:
+  group:
+    flow_max_cumulative: max_cumulative_flow
+    flow_max_instant: max_instant_flow
+    flow_min_cumulative: min_cumulative_flow
+    flow_min_instant: min_instant_flow
+    inertia_limit: inertia_limit
+    invest_max_period: invest_max_period
+    invest_max_total: invest_max_total
+    invest_min_period: invest_min_period
+    invest_min_total: invest_min_total
+    non_synchronous_limit: non_synchronous_limit
+    co2_max_cumulative: co2_max_total
+    co2_max_period: co2_max_period
+    co2_price: co2_price
 
 unit__to_node: 
   unit__outputNode:
@@ -50,10 +78,6 @@ unit__to_node:
     ramp_limit_up: ramp_speed_up
     ramp_limit_down: ramp_speed_down
     constraint_flow_coefficient: constraint_flow_coefficient
-  profile:
-    profile_limit_upper: [profile, 1, [[1]]]
-    profile_limit_lower: [profile, 1, [[1]]]
-    profile_fixed: [profile, 1, [[1]]]
 
 node__to_unit: 
   unit__inputNode:
@@ -63,7 +87,3 @@ node__to_unit:
     ramp_limit_up: [ramp_speed_up, 1, [[2], [1]]]
     ramp_limit_down: [ramp_speed_down, 1, [[2], [1]]]
     constraint_flow_coefficient: [constraint_flow_coefficient, 1, [[2], [1]]]
-  profile:
-    profile_limit_upper: [profile, 1, [[2]]]
-    profile_limit_lower: [profile, 1, [[2]]]
-    profile_fixed: [profile, 1, [[2]]]
