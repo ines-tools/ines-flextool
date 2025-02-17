@@ -72,6 +72,8 @@ def main():
             ## Copy capacity specific parameters (manual scripting)
             print("process capacities")
             target_db = process_capacities(source_db, target_db)
+            print("process efficiencies")
+            target_db = process_efficiency(source_db, target_db)
             print("process profiles")
             target_db = create_profiles(source_db, target_db)
             ## Create user constraint for unit_flow__unit_flow
@@ -221,7 +223,6 @@ def process_capacities(source_db, target_db):
     nu_salvage_value = source_db.get_parameter_value_items(entity_class_name="node__to_unit", parameter_definition_name="salvage_value")
  
     for unit_source in source_db.get_entity_items(entity_class_name="unit"):
-        print(unit_source["name"])
         units_existing = {}
         u_to_n_capacity = {}
         u_to_n_investment_cost = {}
@@ -247,11 +248,11 @@ def process_capacities(source_db, target_db):
                 params = [param for param in un_capacity if param["entity_byname"] == unit__to_node_source]
                 u_to_n_capacity = params_to_dict(u_to_n_capacity, params)
                 params = [param for param in un_investment_cost if param["entity_byname"] == unit__to_node_source]
-                u_to_n_investment_cost.update(params_to_dict(u_to_n_investment_cost, params))
+                u_to_n_investment_cost = params_to_dict(u_to_n_investment_cost, params)
                 params = [param for param in un_fixed_cost if param["entity_byname"] == unit__to_node_source]
-                u_to_n_fixed_cost.update(params_to_dict(u_to_n_fixed_cost, params))
+                u_to_n_fixed_cost = params_to_dict(u_to_n_fixed_cost, params)
                 params = [param for param in un_salvage_value if param["entity_byname"] == unit__to_node_source]
-                u_to_n_salvage_value.update(params_to_dict(u_to_n_salvage_value, params))
+                u_to_n_salvage_value = params_to_dict(u_to_n_salvage_value, params)
 
         # If outputs don't have capacity defined, start plan B: Store parameter capacity in node__to_unit_source (for the alternatives that define it)
         if not u_to_n_capacity:
@@ -360,6 +361,22 @@ def process_capacities(source_db, target_db):
         target_db.commit_session("Added process capacities")
     except DBAPIError as e:
         print("commit process capacities error")
+    return target_db
+
+def process_efficiency(source_db, target_db):
+
+    efficiencies = source_db.get_parameter_value_items(entity_class_name="unit", parameter_definition_name="efficiency")
+    for param in efficiencies:
+        in_val = api.from_database(param["value"], param["type"])
+        if isinstance(in_val, api.Map):
+            if len(in_val.indexes) == 2: #minload eff
+                target_db = ines_transform.add_item_to_DB(target_db, "min_load", [param["alternative_name"], param["entity_byname"], "unit"], float(in_val.indexes[0]))
+                target_db = ines_transform.add_item_to_DB(target_db, "efficiency_at_min_load", [param["alternative_name"], param["entity_byname"], "unit"], float(in_val.values[0]))
+                target_db = ines_transform.add_item_to_DB(target_db, "efficiency", [param["alternative_name"], param["entity_byname"], "unit"], float(in_val.values[1]))
+            else: #piecewise, cannot convert
+                print(f'piecewise eff cannot be converted for: {param["entity_byname"]}')
+        elif isinstance(in_val, float):
+            target_db = ines_transform.add_item_to_DB(target_db, "efficiency", [param["alternative_name"], param["entity_byname"], "unit"], in_val)
     return target_db
 
 
@@ -568,7 +585,7 @@ def create_timeline(source_db, target_db):
                             block_start = start_t
                             timestep_counter = 0
                         timestep_counter += 1
-                    timeblocks_map = api.Map(indexes=start_time.values, values=durations, index_name="timestamp")
+                    timeblocks_map = api.Map(indexes=[str(x) for x in start_time.values], values=durations, index_name="timestamp")
                     p_value, p_type = api.to_database(timeblocks_map)
                     added, error = target_db.add_parameter_value_item(entity_class_name="timeblockSet",
                                                                         entity_byname=(solve_entity["name"],),
