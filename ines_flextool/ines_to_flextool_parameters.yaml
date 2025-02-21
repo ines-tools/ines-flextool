@@ -23,6 +23,7 @@ node:
     storage_lifetime: lifetime
     storage_investment_cost: [invest_cost, 0.001]
     storage_salvage_value: salvage_value
+    storages_existing : existing
   commodity:
     commodity_price: price
     co2_content: co2_content
@@ -30,12 +31,10 @@ node:
 unit: 
   unit:
     availability: availability
-    efficiency: efficiency
     interest_rate: interest_rate
     lifetime: lifetime
     startup_cost: startup_cost
     constraint_unit_count_coefficient: constraint_capacity_coefficient
-    #shutdown_cost: shutdown_cost
 
 link:
   connection:
