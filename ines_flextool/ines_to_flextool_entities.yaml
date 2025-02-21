@@ -15,15 +15,17 @@ solve_pattern:
   - timeblockSet
 system: timeline
 constraint: constraint
+set: group
+set__unit: 
+  - group__unit: [[1],[2]]
+set__node:
+  - group__node: [[1],[2]]
+set__link:
+  - group__connection: [[1],[2]]
 unit__to_node:
   - unit__outputNode: [[1], [2]]
-  - profile: [[1], profile_method]
-  - unit__node__profile: [[1], [2], [1], profile_method]
 node__to_unit:
   - unit__inputNode: [[2], [1]]
-  - profile: [[1], profile_method]
-  - unit__node__profile: [[2], [1], [2], profile_method]
 node__link__node:
   connection__node__node: [[2], [1], [3]]
-  
 

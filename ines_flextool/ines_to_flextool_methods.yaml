@@ -20,22 +20,40 @@ node:
         inflow_method: 'use_original'
       scale_to_annual:
         inflow_method: 'scale_to_annual_flow'
+    storage_investment_method:
+      not_allowed:
+        invest_method: "not_allowed"
+      no_limits:
+        invest_method: "invest_no_limit"
+      cumulative_limits:
+        invest_method: "cumulative_limits"
+      period_limits:
+        invest_method: "invest_period"
+      # not in flextool methods cumulative_and_period_limits, fix_investments:
+    storage_state_binding_method:
+      leap_over_forward_only:
+        storage_binding_method: "bind_forward_only"
+      leap_over_within_period:
+        storage_binding_method: "bind_within_period"
+      leap_over_within_solve:
+        storage_binding_method: "bind_within_solve"
+  
 unit:
   unit:
     conversion_method: 
       constant_efficiency:
-        conversion_method: constant_efficiency
+        conversion_method: 'constant_efficiency'
       partial_load_efficiency:
-        conversion_method: min_load_efficiency
+        conversion_method: 'min_load_efficiency'
       coefficients_only:
         conversion_method: none
     startup_method: 
       no_startup:
-        startup_method: no_startup
+        startup_method: 'no_startup'
       linear:
-        startup_method: linear
+        startup_method: 'linear'
       integer:
-        startup_method: binary
+        startup_method: 'binary'
     investment_method: 
       not_allowed: 
         invest_method: 'not_allowed'
@@ -54,54 +72,41 @@ link:
         transfer_method: 'exact'
       only_cost: 
         transfer_method: 'variable_cost_only'
+    investment_method:
+      not_allowed:
+        invest_method: "not_allowed"
+      no_limits:
+        invest_method: "invest_no_limit"
+      cumulative_limits:
+        invest_method: "cumulative_limits"
+      period_limits:
+        invest_method: "invest_period"
 unit__to_node: 
   unit__outputNode: 
     ramp_method: 
-      no_constraint: 
-        ramp_method: 'none'
       ramp_limit: 
         ramp_method: 'ramp_limit'
       ramp_cost: 
         ramp_method: 'ramp_cost'
       ramp_limit_and_cost: 
         ramp_method: 'both'
-  unit__node__profile:
-    profile_method:
-      upper_limit: 
-        profile_method: [upper_limit, [1, 2, 1]]
-      lower_limit: 
-        profile_method: [lower_limit, [1, 2, 1]]
-      fixed:
-        profile_method: [fixed, [1, 2, 1]]
-      no_profile: 
-        profile_method: [no_profile, [1, 2, 1]]
 constraint: 
   constraint:
     sense:
       greater_than: 
-        sense: greater_than
+        sense: 'greater_than'
       less_than: 
-        sense: less_than
+        sense: 'less_than'
       equal: 
-        sense: equal
+        sense: 'equal'
 node__to_unit: 
   unit__outputNode: 
     ramp_method: 
-      no_constraint: 
-        ramp_method: 'none'
+      #no_constraint: 
+        #ramp_method: none
       ramp_limit: 
         ramp_method: 'ramp_limit'
       ramp_cost: 
         ramp_method: 'ramp_cost'
       ramp_limit_and_cost: 
         ramp_method: 'both'
-  unit__node__profile:
-    profile_method:
-      upper_limit: 
-        profile_method: [upper_limit, [1, 2, 1]]
-      lower_limit: 
-        profile_method: [lower_limit, [1, 2, 1]]
-      fixed:
-        profile_method: [fixed, [1, 2, 1]]
-      no_profile: 
-        profile_method: [no_profile, [1, 2, 1]]
