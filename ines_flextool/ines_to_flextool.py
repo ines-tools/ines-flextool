@@ -99,10 +99,12 @@ def create_profiles(source_db, target_db):
         set_method = source_db.get_parameter_value_items(entity_class_name="set", parameter_definition_name="stochastic_method")
         set_entity = source_db.get_entity_items(entity_class_name="set__"+"unit_flow")
         set_realized = None
-        rolling_jump_db = source_db.get_parameter_value_items(entity_class_name="solve_pattern", parameter_definition_name="rolling_jump")[0]
-        rolling_horizon_db = source_db.get_parameter_value_items(entity_class_name="solve_pattern", parameter_definition_name="rolling_horizon")[0]
-        rolling_jump = api.from_database(rolling_jump_db["value"], rolling_jump_db["type"])
-        rolling_horizon =  api.from_database(rolling_horizon_db["value"], rolling_horizon_db["type"])
+        rolling_jump_db = source_db.get_parameter_value_items(entity_class_name="solve_pattern", parameter_definition_name="rolling_jump")
+        rolling_horizon_db = source_db.get_parameter_value_items(entity_class_name="solve_pattern", parameter_definition_name="rolling_horizon")
+        if rolling_jump_db:
+            rolling_jump = api.from_database(rolling_jump_db[0]["value"], rolling_jump_db[0]["type"])
+        if rolling_horizon_db:
+            rolling_horizon =  api.from_database(rolling_horizon_db[0]["value"], rolling_horizon_db[0]["type"])
 
         for source_entity in source_db.get_entity_items(entity_class_name=entity_class):
             added_entities = [] #just for the possibility of a profile_method without values
@@ -278,7 +280,7 @@ def process_capacities(source_db, target_db):
                 target_db = ines_transform.add_item_to_DB(target_db, "virtual_unitsize", alt_ent_class, u_to_n_val)
                 for units_max_cumulative in units_max_cumulatives:
                     if unit_source["name"] == units_max_cumulative["entity_name"]:
-                        if isinstance(units_max_cumulative["parsed_value"],list):
+                        if isinstance(units_max_cumulative["parsed_value"],api.Map):
                             cul_capacity_list = []
                             for value in units_max_cumulative["parsed_value"].values:
                                 cul_capacity_list.append(round(value * u_to_n_val, 6))
@@ -289,7 +291,7 @@ def process_capacities(source_db, target_db):
                             target_db = ines_transform.add_item_to_DB(target_db, "cumulative_max_capacity", alt_ent_class, value)
                 for units_min_cumulative in units_min_cumulatives:
                     if unit_source["name"] == units_min_cumulative["entity_name"]:
-                        if isinstance(units_min_cumulative["parsed_value"],list):
+                        if isinstance(units_min_cumulative["parsed_value"],api.Map):
                             cul_capacity_list = []
                             for value in units_min_cumulative["parsed_value"].values:
                                 cul_capacity_list.append(round(value * u_to_n_val, 6))
@@ -307,7 +309,7 @@ def process_capacities(source_db, target_db):
                 target_db = ines_transform.add_item_to_DB(target_db, "virtual_unitsize", alt_ent_class, n_to_u_val)
                 for units_max_cumulative in units_max_cumulatives:
                     if unit_source["name"] == units_max_cumulative["entity_name"]:
-                        if isinstance(units_max_cumulative["parsed_value"],list):
+                        if isinstance(units_max_cumulative["parsed_value"],api.Map):
                             cul_capacity_list = []
                             for value in units_max_cumulative["parsed_value"].values:
                                 cul_capacity_list.append(round(value * n_to_u_val, 6))
@@ -318,7 +320,7 @@ def process_capacities(source_db, target_db):
                             target_db = ines_transform.add_item_to_DB(target_db, "cumulative_max_capacity", alt_ent_class, value)
                 for units_min_cumulative in units_min_cumulatives:
                     if unit_source["name"] == units_min_cumulative["entity_name"]:
-                        if isinstance(units_min_cumulative["parsed_value"],list):
+                        if isinstance(units_min_cumulative["parsed_value"],api.Map):
                             cul_capacity_list = []
                             for value in units_min_cumulative["parsed_value"].values:
                                 cul_capacity_list.append(round(value * n_to_u_val, 6))
@@ -331,7 +333,11 @@ def process_capacities(source_db, target_db):
         if u_to_n_investment_cost:
             for u_to_n_alt, u_to_n_val in u_to_n_investment_cost.items():
                 alt_ent_class = (u_to_n_alt, unit_source["entity_byname"], "unit")
-                target_db = ines_transform.add_item_to_DB(target_db, "invest_cost", alt_ent_class, u_to_n_val * 0.001)
+                if isinstance(u_to_n_val, api.Map):
+                    u_to_n_val.values = [i * 0.001 for i in u_to_n_val.values] 
+                elif isinstance(u_to_n_val, float):
+                    u_to_n_val =  u_to_n_val * 0.001
+                target_db = ines_transform.add_item_to_DB(target_db, "invest_cost", alt_ent_class, u_to_n_val)
             for u_to_n_alt, u_to_n_val in u_to_n_fixed_cost.items():
                 alt_ent_class = (u_to_n_alt, unit_source["entity_byname"], "unit")
                 target_db = ines_transform.add_item_to_DB(target_db, "fixed_cost", alt_ent_class, u_to_n_val)
@@ -342,7 +348,11 @@ def process_capacities(source_db, target_db):
         elif n_to_u_investment_cost:
             for n_to_u_alt, n_to_u_val in n_to_u_investment_cost.items():
                 alt_ent_class = (n_to_u_alt, unit_source["entity_byname"], "unit")
-                target_db = ines_transform.add_item_to_DB(target_db, "invest_cost", alt_ent_class, n_to_u_val * 0.001)
+                if isinstance(n_to_u_val, api.Map):
+                    n_to_u_val.values = [i * 0.001 for i in n_to_u_val.values] 
+                elif isinstance(n_to_u_val, float):
+                    n_to_u_val =  n_to_u_val * 0.001
+                target_db = ines_transform.add_item_to_DB(target_db, "invest_cost", alt_ent_class, n_to_u_val)
             for n_to_u_alt, n_to_u_val in n_to_u_fixed_cost.items():
                 alt_ent_class = (n_to_u_alt, unit_source["entity_byname"], "unit")
                 target_db = ines_transform.add_item_to_DB(target_db, "fixed_cost", alt_ent_class, n_to_u_val)
@@ -569,7 +579,7 @@ def create_timeline(source_db, target_db):
                     block_iterator = iter(start_time.values)
                     start_t = next(block_iterator)
                     durations_counter = 0
-                    for timeline_index in timeline_indexes[system_entity]:
+                    for ind, timeline_index in enumerate(timeline_indexes[system_entity]):
                         if block_start and timeline_index > block_start.value + duration_value.values[durations_counter].value:
                             durations.append(timestep_counter)
                             durations_counter += 1
@@ -581,7 +591,7 @@ def create_timeline(source_db, target_db):
                         if block_start is None and np.datetime_as_string(timeline_index) == start_t.value.isoformat():
                             block_start = start_t
                             timestep_counter = 0
-                        timestep_counter += 1
+                        timestep_counter += timeline_values[system_entity][ind]
                     timeblocks_map = api.Map(indexes=[str(x) for x in start_time.values], values=durations, index_name="timestamp")
                     p_value, p_type = api.to_database(timeblocks_map)
                     added, error = target_db.add_parameter_value_item(entity_class_name="timeblockSet",
@@ -607,7 +617,8 @@ def create_timeline(source_db, target_db):
                                                                    parameter_definition_name="years_represented"):
                 period_years[y_rep_value["alternative_name"]].append(period_entity["name"])
                 years_reped = api.from_database(y_rep_value["value"], y_rep_value["type"])
-                years_represented[y_rep_value["alternative_name"]].append(years_reped)
+                if isinstance(years_reped, api.Duration):
+                    years_represented[y_rep_value["alternative_name"]].append(years_reped.value.years)
 
         for alt, value in period_years.items():
             years_map = api.Map(indexes=value, values=years_represented[alt], index_name="period")
@@ -674,10 +685,12 @@ def process_single_stochastic_parameter(source_db, target_db, params, target_par
     set_entity = source_db.get_entity_items(entity_class_name="set__"+source_class)
 
     set_realized = None
-    rolling_jump_db = source_db.get_parameter_value_items(entity_class_name="solve_pattern", parameter_definition_name="rolling_jump")[0]
-    rolling_horizon_db = source_db.get_parameter_value_items(entity_class_name="solve_pattern", parameter_definition_name="rolling_horizon")[0]
-    rolling_jump = api.from_database(rolling_jump_db["value"], rolling_jump_db["type"])
-    rolling_horizon =  api.from_database(rolling_horizon_db["value"], rolling_horizon_db["type"])
+    rolling_jump_db = source_db.get_parameter_value_items(entity_class_name="solve_pattern", parameter_definition_name="rolling_jump")
+    rolling_horizon_db = source_db.get_parameter_value_items(entity_class_name="solve_pattern", parameter_definition_name="rolling_horizon")
+    if rolling_jump_db:
+        rolling_jump = api.from_database(rolling_jump_db[0]["value"], rolling_jump_db[0]["type"])
+    if rolling_horizon_db:
+        rolling_horizon =  api.from_database(rolling_horizon_db[0]["value"], rolling_horizon_db[0]["type"])
 
     for param in params:
         if entity_byname_order:
