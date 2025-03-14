@@ -579,7 +579,7 @@ def create_timeline(source_db, target_db):
                     block_iterator = iter(start_time.values)
                     start_t = next(block_iterator)
                     durations_counter = 0
-                    for ind, timeline_index in enumerate(timeline_indexes[system_entity]):
+                    for timeline_index in timeline_indexes[system_entity]:
                         if block_start and timeline_index > block_start.value + duration_value.values[durations_counter].value:
                             durations.append(timestep_counter)
                             durations_counter += 1
@@ -591,7 +591,7 @@ def create_timeline(source_db, target_db):
                         if block_start is None and np.datetime_as_string(timeline_index) == start_t.value.isoformat():
                             block_start = start_t
                             timestep_counter = 0
-                        timestep_counter += timeline_values[system_entity][ind]
+                        timestep_counter += 1
                     timeblocks_map = api.Map(indexes=[str(x) for x in start_time.values], values=durations, index_name="timestamp")
                     p_value, p_type = api.to_database(timeblocks_map)
                     added, error = target_db.add_parameter_value_item(entity_class_name="timeblockSet",
