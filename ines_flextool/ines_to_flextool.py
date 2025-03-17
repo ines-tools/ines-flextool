@@ -5,8 +5,10 @@ from spinedb_api.exception import NothingToCommit
 from sqlalchemy.exc import DBAPIError
 import sys
 import yaml
+import numpy as np
 from collections import defaultdict
 from dateutil.relativedelta import relativedelta
+from spinedb_api.exception import NothingToCommit
 
 if len(sys.argv) > 1:
     url_db_in = sys.argv[1]
@@ -53,20 +55,149 @@ def main():
                 print(e)
 
             ## Copy entites
+            print("copy_entities")
             target_db = ines_transform.copy_entities(source_db, target_db, entities_to_copy)
             ## Copy numeric parameters(source_db, target_db, copy_entities)
+            print("transfrom_parameters")
             target_db = ines_transform.transform_parameters(source_db, target_db, parameter_transforms, ts_to_map=True)
             ## Copy method parameters
+            print("process methods")
             target_db = ines_transform.process_methods(source_db, target_db, parameter_methods)
             ## Copy entities to parameters
             #target_db = ines_transform.copy_entities_to_parameters(source_db, target_db, entities_to_parameters)
             ## Copy capacity specific parameters (manual scripting)
+            print("process capacities")
             target_db = process_capacities(source_db, target_db)
+            print("process efficiencies")
+            target_db = process_efficiency(source_db, target_db)
+            print("process profiles")
+            target_db = create_profiles(source_db, target_db)
             ## Create user constraint for unit_flow__unit_flow
+            print("process user constraints")
             target_db = process_user_constraints(source_db, target_db)
+            print("process stochastic params")
+            target_db = process_stochastic_parameters(source_db, target_db)
             ## Create a timeline from start_time and duration
+            print("create timelines")
             target_db = create_timeline(source_db, target_db)
 
+
+def create_profiles(source_db, target_db):
+
+    classes = ['unit__to_node','node__to_unit']
+    for entity_class in classes:
+        profile_limit_upper = source_db.get_parameter_value_items(entity_class_name=entity_class, parameter_definition_name="profile_limit_upper")
+        profile_limit_upper_forecasts = source_db.get_parameter_value_items(entity_class_name=entity_class, parameter_definition_name="profile_limit_upper_forecasts")
+        profile_limit_lower = source_db.get_parameter_value_items(entity_class_name=entity_class, parameter_definition_name="profile_limit_lower")
+        profile_limit_lower_forecasts = source_db.get_parameter_value_items(entity_class_name=entity_class, parameter_definition_name="profile_limit_lower_forecasts")
+        profile_limit_fix = source_db.get_parameter_value_items(entity_class_name=entity_class, parameter_definition_name="profile_limit_fix")
+        profile_limit_fix_forecasts = source_db.get_parameter_value_items(entity_class_name=entity_class, parameter_definition_name="profile_limit_fix_forecasts")
+        profile_methods = source_db.get_parameter_value_items(entity_class_name=entity_class, parameter_definition_name="profile_method")
+
+        #for stochastic timeseries
+        set_inter = source_db.get_parameter_value_items(entity_class_name="set", parameter_definition_name="stochastic_forecast_interpolation_factors")
+        set_method = source_db.get_parameter_value_items(entity_class_name="set", parameter_definition_name="stochastic_method")
+        set_entity = source_db.get_entity_items(entity_class_name="set__"+"unit_flow")
+        set_realized = None
+        rolling_jump_db = source_db.get_parameter_value_items(entity_class_name="solve_pattern", parameter_definition_name="rolling_jump")
+        rolling_horizon_db = source_db.get_parameter_value_items(entity_class_name="solve_pattern", parameter_definition_name="rolling_horizon")
+        if rolling_jump_db:
+            rolling_jump = api.from_database(rolling_jump_db[0]["value"], rolling_jump_db[0]["type"])
+        if rolling_horizon_db:
+            rolling_horizon =  api.from_database(rolling_horizon_db[0]["value"], rolling_horizon_db[0]["type"])
+
+        for source_entity in source_db.get_entity_items(entity_class_name=entity_class):
+            added_entities = [] #just for the possibility of a profile_method without values
+            if entity_class == 'unit__to_node':
+                node = source_entity["entity_byname"][1]
+                unit = source_entity["entity_byname"][0]
+            else:
+                node = source_entity["entity_byname"][0]
+                unit = source_entity["entity_byname"][1]
+
+            if (any(param["entity_byname"] == source_entity["entity_byname"] for param in profile_limit_upper) or 
+                any(param["entity_byname"] == source_entity["entity_byname"] for param in profile_limit_upper_forecasts)):
+                ines_transform.assert_success(target_db.add_entity_item(entity_class_name="profile",
+                                                                            entity_byname=(unit+"_upper",)), warn=True)
+                ines_transform.assert_success(target_db.add_entity_item(entity_class_name='unit__node__profile',
+                                                                            entity_byname=(unit,node,unit+"_upper")), warn=True)
+                added_entities.append((unit,node,unit+"_upper"))
+                
+            if (any(param["entity_byname"] == source_entity["entity_byname"] for param in profile_limit_lower) or 
+                any(param["entity_byname"] == source_entity["entity_byname"] for param in profile_limit_lower_forecasts)):
+                ines_transform.assert_success(target_db.add_entity_item(entity_class_name="profile",
+                                                                            entity_byname=(unit+"_lower",)), warn=True)
+                ines_transform.assert_success(target_db.add_entity_item(entity_class_name='unit__node__profile',
+                                                                            entity_byname=(unit,node,unit+"_lower")), warn=True)
+                added_entities.append((unit,node,unit+"_lower"))
+            
+            if (any(param["entity_byname"] == source_entity["entity_byname"] for param in profile_limit_fix) or 
+                any(param["entity_byname"] == source_entity["entity_byname"] for param in profile_limit_fix_forecasts)):
+                ines_transform.assert_success(target_db.add_entity_item(entity_class_name="profile",
+                                                                            entity_byname=(unit+"_fix",)), warn=True)
+                ines_transform.assert_success(target_db.add_entity_item(entity_class_name='unit__node__profile',
+                                                                            entity_byname=(unit,node,unit+"_fix")), warn=True)
+                added_entities.append((unit,node,unit+"_fix"))
+            for param in profile_limit_upper:
+                if param["entity_byname"] == source_entity["entity_byname"]:
+                    alt_ent_class_target = [param["alternative_name"], (unit+"_upper",), "profile"]
+                    target_db = pass_profile_value(target_db, param, alt_ent_class_target)
+            for param in profile_limit_lower:
+                if param["entity_byname"] == source_entity["entity_byname"]:
+                    alt_ent_class_target = [param["alternative_name"], (unit+"_lower",), "profile"]
+                    target_db = pass_profile_value(target_db, param, alt_ent_class_target)
+            for param in profile_limit_fix:
+                if param["entity_byname"] == source_entity["entity_byname"]:
+                    alt_ent_class_target = [param["alternative_name"], (unit+"_fix",), "profile"]
+                    target_db = pass_profile_value(target_db, param, alt_ent_class_target)
+            for param in profile_limit_upper_forecasts:
+                if param["entity_byname"] == source_entity["entity_byname"]:
+                    target_db = create_4d_from_stochastic_interpolation(target_db, param, "profile", [(unit+"_upper",), "profile"], 
+                                                                        set_entity, set_inter, set_method, set_realized, rolling_jump, rolling_horizon)
+            for param in profile_limit_lower_forecasts:
+                if param["entity_byname"] == source_entity["entity_byname"]:
+                    target_db = create_4d_from_stochastic_interpolation(target_db, param, "profile", [(unit+"_upper",), "profile"], 
+                                                                        set_entity, set_inter, set_method, set_realized, rolling_jump, rolling_horizon)
+            for param in profile_limit_fix_forecasts:
+                if param["entity_byname"] == source_entity["entity_byname"]:
+                    target_db = create_4d_from_stochastic_interpolation(target_db, param, "profile", [(unit+"_upper",), "profile"], 
+                                                                        set_entity, set_inter, set_method, set_realized, rolling_jump, rolling_horizon)
+    
+            for param in profile_methods:
+                if param["entity_byname"] == source_entity["entity_byname"]:
+                    alt = param["alternative_name"]
+                    profile_method = api.from_database(param["value"], param["type"])
+                    if profile_method != 'no_profile':
+                        if profile_method=='upper_and_lower_limit':
+                            if (unit,node,unit+"_upper") in added_entities:
+                                target_db = ines_transform.add_item_to_DB(target_db, "profile_method", 
+                                                                            [alt, (unit,node,unit+"_upper"), "unit__node__profile"], "upper_limit")
+                            if (unit,node,unit+"_lower") in added_entities:
+                                target_db = ines_transform.add_item_to_DB(target_db, "profile_method", 
+                                                                            [alt, (unit,node,unit+"_lower"), "unit__node__profile"], "lower_limit")
+                        elif profile_method=='upper_limit':
+                            if (unit,node,unit+"_upper") in added_entities:
+                                target_db = ines_transform.add_item_to_DB(target_db, "profile_method", [alt, (unit,node,unit+"_upper"), "unit__node__profile"], profile_method)
+                        elif profile_method=='lower_limit':
+                            if (unit,node,unit+"_lower") in added_entities:
+                                target_db = ines_transform.add_item_to_DB(target_db, "profile_method", [alt, (unit,node,unit+"_lower"), "unit__node__profile"], profile_method)
+                        elif profile_method=='fixed':
+                            if (unit,node,unit+"_fix") in added_entities:
+                                target_db = ines_transform.add_item_to_DB(target_db, "profile_method", [alt, (unit,node,unit+"_fix"), "unit__node__profile"], profile_method)
+
+    try:
+        target_db.commit_session("Added profile entities and values")
+    except NothingToCommit:
+        print("No profile constraints to commit")
+    except DBAPIError as e:
+        print("commit profile parameters error")
+    return target_db
+
+def pass_profile_value(target_db, param, alt_ent_class_target):
+    profile = api.from_database(param["value"], param["type"])
+    value = api.Map([str(x) for x in profile.indexes], [float(x) for x in profile.values])
+    target_db = ines_transform.add_item_to_DB(target_db, "profile", alt_ent_class_target, value, value_type='map')
+    return target_db
 
 def process_capacities(source_db, target_db):
     unit__to_node_entities = source_db.get_entity_items(entity_class_name="unit__to_node")
@@ -77,6 +208,19 @@ def process_capacities(source_db, target_db):
     unit__node_to_unit = defaultdict(list)
     for n_to_u in node__to_unit_entities:
         unit__node_to_unit[n_to_u["entity_byname"][1]].append([n_to_u["entity_byname"]])
+
+    units_max_cumulatives = source_db.get_parameter_value_items(entity_class_name="unit", parameter_definition_name="units_max_cumulative")
+    units_min_cumulatives = source_db.get_parameter_value_items(entity_class_name="unit", parameter_definition_name="units_min_cumulative")
+    units_existing_source = source_db.get_parameter_value_items(entity_class_name="unit", parameter_definition_name="units_existing")
+    un_capacity = source_db.get_parameter_value_items(entity_class_name="unit__to_node", parameter_definition_name="capacity")
+    un_investment_cost = source_db.get_parameter_value_items(entity_class_name="unit__to_node", parameter_definition_name="investment_cost")
+    un_fixed_cost = source_db.get_parameter_value_items(entity_class_name="unit__to_node", parameter_definition_name="fixed_cost")
+    un_salvage_value = source_db.get_parameter_value_items(entity_class_name="unit__to_node", parameter_definition_name="salvage_value")
+    nu_capacity = source_db.get_parameter_value_items(entity_class_name="node__to_unit", parameter_definition_name="capacity")
+    nu_investment_cost = source_db.get_parameter_value_items(entity_class_name="node__to_unit", parameter_definition_name="investment_cost")
+    nu_fixed_cost = source_db.get_parameter_value_items(entity_class_name="node__to_unit", parameter_definition_name="fixed_cost")
+    nu_salvage_value = source_db.get_parameter_value_items(entity_class_name="node__to_unit", parameter_definition_name="salvage_value")
+ 
     for unit_source in source_db.get_entity_items(entity_class_name="unit"):
         units_existing = {}
         u_to_n_capacity = {}
@@ -89,44 +233,42 @@ def process_capacities(source_db, target_db):
         n_to_u_salvage_value = {}
 
         # Store parameter units_existing (for the alternatives that define it)
-        units_max_cumulatives = source_db.get_parameter_value_items(entity_class_name="unit", entity_name=unit_source["name"], parameter_definition_name="units_max_cumulative")
-        units_min_cumulatives = source_db.get_parameter_value_items(entity_class_name="unit", entity_name=unit_source["name"], parameter_definition_name="units_min_cumulative")
-        params = source_db.get_parameter_value_items(entity_class_name="unit", entity_name=unit_source["name"], parameter_definition_name="units_existing")
-        for param in params:
-            value = api.from_database(param["value"], param["type"])
-            if value:
-                units_existing[param["alternative_name"]] = value
-                alt_ent_class = (param["alternative_name"], unit_source["entity_byname"], "unit")
-                # Write 'number of existing units' to the db (assuming ines_db uses number of units as it should)
-                target_db = ines_transform.add_item_to_DB(target_db, "existing", alt_ent_class, value)
+        for param in units_existing_source:
+            if unit_source["name"] == param["entity_name"]:
+                value = api.from_database(param["value"], param["type"])
+                if value:
+                    units_existing[param["alternative_name"]] = value
+                    alt_ent_class = (param["alternative_name"], unit_source["entity_byname"], "unit")
+                    # Write 'number of existing units' to the db (assuming ines_db uses number of units as it should)
+                    target_db = ines_transform.add_item_to_DB(target_db, "existing", alt_ent_class, value)
         # Store capacity related parameters in unit__to_node_source (for the alternatives that define it)
         for unit__to_node_sources in unit__unit_to_node[unit_source["name"]]:
             for unit__to_node_source in unit__to_node_sources:
-                params = source_db.get_parameter_value_items(entity_class_name="unit__to_node", entity_byname=unit__to_node_source, parameter_definition_name="capacity")
+                params = [param for param in un_capacity if param["entity_byname"] == unit__to_node_source]
                 u_to_n_capacity = params_to_dict(u_to_n_capacity, params)
-                params = source_db.get_parameter_value_items(entity_class_name="unit__to_node", entity_byname=unit__to_node_source, parameter_definition_name="investment_cost")
-                u_to_n_investment_cost.update(params_to_dict(u_to_n_investment_cost, params))
-                params = source_db.get_parameter_value_items(entity_class_name="unit__to_node", entity_byname=unit__to_node_source, parameter_definition_name="fixed_cost")
-                u_to_n_fixed_cost.update(params_to_dict(u_to_n_fixed_cost, params))
-                params = source_db.get_parameter_value_items(entity_class_name="unit__to_node", entity_byname=unit__to_node_source, parameter_definition_name="salvage_value")
-                u_to_n_salvage_value.update(params_to_dict(u_to_n_salvage_value, params))
+                params = [param for param in un_investment_cost if param["entity_byname"] == unit__to_node_source]
+                u_to_n_investment_cost = params_to_dict(u_to_n_investment_cost, params)
+                params = [param for param in un_fixed_cost if param["entity_byname"] == unit__to_node_source]
+                u_to_n_fixed_cost = params_to_dict(u_to_n_fixed_cost, params)
+                params = [param for param in un_salvage_value if param["entity_byname"] == unit__to_node_source]
+                u_to_n_salvage_value = params_to_dict(u_to_n_salvage_value, params)
 
         # If outputs don't have capacity defined, start plan B: Store parameter capacity in node__to_unit_source (for the alternatives that define it)
         if not u_to_n_capacity:
             for node__to_unit_sources in unit__node_to_unit[unit_source["name"]]:
                 for node__to_unit_source in node__to_unit_sources:
-                    params = source_db.get_parameter_value_items(entity_class_name="node__to_unit", entity_byname=node__to_unit_source, parameter_definition_name="capacity")
+                    params = [param for param in nu_capacity if param["entity_byname"] == node__to_unit_source]
                     n_to_u_capacity = params_to_dict(n_to_u_capacity, params)
 
         # If outputs don't have investment_cost defined, start plan B: Store parameters investment_cost, fixed_cost and salvage_value in node__to_unit_source (for the alternatives that define it)
         if not u_to_n_investment_cost:
             for node__to_unit_sources in unit__node_to_unit[unit_source["name"]]:
                 for node__to_unit_source in node__to_unit_sources:
-                    params = source_db.get_parameter_value_items(entity_class_name="node__to_unit", entity_byname=node__to_unit_source, parameter_definition_name="investment_cost")
+                    params = [param for param in nu_investment_cost if param["entity_byname"] == node__to_unit_source]
                     n_to_u_investment_cost = params_to_dict(n_to_u_investment_cost, params)
-                    params = source_db.get_parameter_value_items(entity_class_name="node__to_unit", entity_byname=node__to_unit_source, parameter_definition_name="fixed_cost")
+                    params = [param for param in nu_fixed_cost if param["entity_byname"] == node__to_unit_source]
                     n_to_u_fixed_cost = params_to_dict(n_to_u_fixed_cost, params)
-                    params = source_db.get_parameter_value_items(entity_class_name="node__to_unit", entity_byname=node__to_unit_source, parameter_definition_name="salvage_value")
+                    params = [param for param in nu_salvage_value if param["entity_byname"] == node__to_unit_source]
                     n_to_u_salvage_value = params_to_dict(n_to_u_salvage_value, params)
 
         # Write virtual_unitsize to FlexTool DB (if capacity defined in unit outputs)
@@ -137,18 +279,27 @@ def process_capacities(source_db, target_db):
                     exit("Unit_to_node capacity in ines_db needs to be a constant float")
                 target_db = ines_transform.add_item_to_DB(target_db, "virtual_unitsize", alt_ent_class, u_to_n_val)
                 for units_max_cumulative in units_max_cumulatives:
-                    cul_capacity_list = []
-                    for value in units_max_cumulative["parsed_value"].values:
-                        cul_capacity_list.append(round(value * u_to_n_val, 6))
-                    cul_capacity_map = api.Map(indexes=units_max_cumulative["parsed_value"].indexes, values=cul_capacity_list, index_name="period")
-                    target_db = ines_transform.add_item_to_DB(target_db, "cumulative_max_capacity", alt_ent_class, cul_capacity_map)
+                    if unit_source["name"] == units_max_cumulative["entity_name"]:
+                        if isinstance(units_max_cumulative["parsed_value"],api.Map):
+                            cul_capacity_list = []
+                            for value in units_max_cumulative["parsed_value"].values:
+                                cul_capacity_list.append(round(value * u_to_n_val, 6))
+                            cul_capacity_map = api.Map(indexes=units_max_cumulative["parsed_value"].indexes, values=cul_capacity_list, index_name="period")
+                            target_db = ines_transform.add_item_to_DB(target_db, "cumulative_max_capacity", alt_ent_class, cul_capacity_map)
+                        else:
+                            value = round(units_max_cumulative["parsed_value"]* u_to_n_val, 6)
+                            target_db = ines_transform.add_item_to_DB(target_db, "cumulative_max_capacity", alt_ent_class, value)
                 for units_min_cumulative in units_min_cumulatives:
-                    cul_capacity_list = []
-                    for value in units_min_cumulative["parsed_value"].values:
-                        cul_capacity_list.append(round(value * u_to_n_val, 6))
-                    cul_capacity_map = api.Map(indexes=units_min_cumulative["parsed_value"].indexes, values=cul_capacity_list, index_name="period")
-                    target_db = ines_transform.add_item_to_DB(target_db, "cumulative_min_capacity", alt_ent_class, cul_capacity_map)
-
+                    if unit_source["name"] == units_min_cumulative["entity_name"]:
+                        if isinstance(units_min_cumulative["parsed_value"],api.Map):
+                            cul_capacity_list = []
+                            for value in units_min_cumulative["parsed_value"].values:
+                                cul_capacity_list.append(round(value * u_to_n_val, 6))
+                            cul_capacity_map = api.Map(indexes=units_min_cumulative["parsed_value"].indexes, values=cul_capacity_list, index_name="period")
+                            target_db = ines_transform.add_item_to_DB(target_db, "cumulative_min_capacity", alt_ent_class, cul_capacity_map)
+                        else:
+                            value = round(units_min_cumulative["parsed_value"]* u_to_n_val, 6)
+                            target_db = ines_transform.add_item_to_DB(target_db, "cumulative_min_capacity", alt_ent_class, value)
         # Write virtual_unitsize to FlexTool DB (if capacity is defined in unit inputs instead)
         elif n_to_u_capacity:
             for n_to_u_alt, n_to_u_val in n_to_u_capacity.items():
@@ -157,22 +308,35 @@ def process_capacities(source_db, target_db):
                     exit("Node_to_unit capacity in ines_db needs to be a constant float")
                 target_db = ines_transform.add_item_to_DB(target_db, "virtual_unitsize", alt_ent_class, n_to_u_val)
                 for units_max_cumulative in units_max_cumulatives:
-                    cul_capacity_list = []
-                    for value in units_max_cumulative["parsed_value"].values:
-                        cul_capacity_list.append(round(value * n_to_u_val, 6))
-                    cul_capacity_map = api.Map(indexes=units_max_cumulative["parsed_value"].indexes, values=cul_capacity_list, index_name="period")
-                    target_db = ines_transform.add_item_to_DB(target_db, "cumulative_max_capacity", alt_ent_class, cul_capacity_map)
+                    if unit_source["name"] == units_max_cumulative["entity_name"]:
+                        if isinstance(units_max_cumulative["parsed_value"],api.Map):
+                            cul_capacity_list = []
+                            for value in units_max_cumulative["parsed_value"].values:
+                                cul_capacity_list.append(round(value * n_to_u_val, 6))
+                            cul_capacity_map = api.Map(indexes=units_max_cumulative["parsed_value"].indexes, values=cul_capacity_list, index_name="period")
+                            target_db = ines_transform.add_item_to_DB(target_db, "cumulative_max_capacity", alt_ent_class, cul_capacity_map)
+                        else: 
+                            value = round(units_max_cumulative["parsed_value"]* n_to_u_val, 6)
+                            target_db = ines_transform.add_item_to_DB(target_db, "cumulative_max_capacity", alt_ent_class, value)
                 for units_min_cumulative in units_min_cumulatives:
-                    cul_capacity_list = []
-                    for value in units_min_cumulative["parsed_value"].values:
-                        cul_capacity_list.append(round(value * n_to_u_val, 6))
-                    cul_capacity_map = api.Map(indexes=units_min_cumulative["parsed_value"].indexes, values=cul_capacity_list, index_name="period")
-                    target_db = ines_transform.add_item_to_DB(target_db, "cumulative_min_capacity", alt_ent_class, cul_capacity_map)
-
+                    if unit_source["name"] == units_min_cumulative["entity_name"]:
+                        if isinstance(units_min_cumulative["parsed_value"],api.Map):
+                            cul_capacity_list = []
+                            for value in units_min_cumulative["parsed_value"].values:
+                                cul_capacity_list.append(round(value * n_to_u_val, 6))
+                            cul_capacity_map = api.Map(indexes=units_min_cumulative["parsed_value"].indexes, values=cul_capacity_list, index_name="period")
+                            target_db = ines_transform.add_item_to_DB(target_db, "cumulative_min_capacity", alt_ent_class, cul_capacity_map)
+                        else: 
+                            value = round(units_min_cumulative["parsed_value"]* n_to_u_val, 6)
+                            target_db = ines_transform.add_item_to_DB(target_db, "cumulative_min_capacity", alt_ent_class, value)
         # Write 'investment_cost', 'fixed_cost' and 'salvage_value' to FlexTool DB (if investment_cost defined in unit outputs)
         if u_to_n_investment_cost:
             for u_to_n_alt, u_to_n_val in u_to_n_investment_cost.items():
                 alt_ent_class = (u_to_n_alt, unit_source["entity_byname"], "unit")
+                if isinstance(u_to_n_val, api.Map):
+                    u_to_n_val.values = [i * 0.001 for i in u_to_n_val.values] 
+                elif isinstance(u_to_n_val, float):
+                    u_to_n_val =  u_to_n_val * 0.001
                 target_db = ines_transform.add_item_to_DB(target_db, "invest_cost", alt_ent_class, u_to_n_val)
             for u_to_n_alt, u_to_n_val in u_to_n_fixed_cost.items():
                 alt_ent_class = (u_to_n_alt, unit_source["entity_byname"], "unit")
@@ -184,6 +348,10 @@ def process_capacities(source_db, target_db):
         elif n_to_u_investment_cost:
             for n_to_u_alt, n_to_u_val in n_to_u_investment_cost.items():
                 alt_ent_class = (n_to_u_alt, unit_source["entity_byname"], "unit")
+                if isinstance(n_to_u_val, api.Map):
+                    n_to_u_val.values = [i * 0.001 for i in n_to_u_val.values] 
+                elif isinstance(n_to_u_val, float):
+                    n_to_u_val =  n_to_u_val * 0.001
                 target_db = ines_transform.add_item_to_DB(target_db, "invest_cost", alt_ent_class, n_to_u_val)
             for n_to_u_alt, n_to_u_val in n_to_u_fixed_cost.items():
                 alt_ent_class = (n_to_u_alt, unit_source["entity_byname"], "unit")
@@ -200,6 +368,22 @@ def process_capacities(source_db, target_db):
         target_db.commit_session("Added process capacities")
     except DBAPIError as e:
         print("commit process capacities error")
+    return target_db
+
+def process_efficiency(source_db, target_db):
+
+    efficiencies = source_db.get_parameter_value_items(entity_class_name="unit", parameter_definition_name="efficiency")
+    for param in efficiencies:
+        in_val = api.from_database(param["value"], param["type"])
+        if isinstance(in_val, api.Map):
+            if len(in_val.indexes) == 2: #minload eff
+                target_db = ines_transform.add_item_to_DB(target_db, "min_load", [param["alternative_name"], param["entity_byname"], "unit"], float(in_val.indexes[0]))
+                target_db = ines_transform.add_item_to_DB(target_db, "efficiency_at_min_load", [param["alternative_name"], param["entity_byname"], "unit"], float(in_val.values[0]))
+                target_db = ines_transform.add_item_to_DB(target_db, "efficiency", [param["alternative_name"], param["entity_byname"], "unit"], float(in_val.values[1]))
+            else: #piecewise, cannot convert
+                print(f'piecewise eff cannot be converted for: {param["entity_byname"]}')
+        elif isinstance(in_val, float):
+            target_db = ines_transform.add_item_to_DB(target_db, "efficiency", [param["alternative_name"], param["entity_byname"], "unit"], in_val)
     return target_db
 
 
@@ -332,16 +516,13 @@ def create_timeline(source_db, target_db):
             exit("Only one alternative value supported for the timeline parameter of one system entity.")
         for param in params:
             value = api.from_database(param["value"], param["type"])
-            timeline_indexes[system_entity["name"]] = value.indexes
-            timeline_values[system_entity["name"]] = value.values
             if value.VALUE_TYPE == 'time series':
-                # this works only if time resolution is <= 1 month - relativedelta does not have an easy way to calculate number of days over month boundaries
-                value = api.Map([str(x) for x in value.indexes], [float(x) for x in value.values],
-                                #[float(x) for x in value.values + value.resolution[0].days*24 + value.resolution[0].hours + value.resolution[0].minutes/60],
-                                index_name=value.index_name)
-                value._value_type = "map"
+                timeline_indexes[system_entity["name"]] = value.indexes
+                timeline_values[system_entity["name"]] = value.values
+                value = api.Map([str(x) for x in value.indexes], [float(x) for x in value.values],index_name=value.index_name)
             target_db = ines_transform.add_item_to_DB(target_db, "timestep_duration", [param["alternative_name"], (system_entity["name"], ), "timeline"], value)
     for solve_entity in source_db.get_entity_items(entity_class_name="solve_pattern"):
+        period_list = []
         for param_period in source_db.get_parameter_value_items(solve_entity["entity_class_name"], entity_name=solve_entity["name"], parameter_definition_name="period"):
             solves_array = api.Array(values=[solve_entity["name"]], index_name="solves")
             p_value, p_type = api.to_database(solves_array)
@@ -352,11 +533,14 @@ def create_timeline(source_db, target_db):
                                                value=p_value,
                                                type=p_type)
             period = api.from_database(param_period["value"], param_period["type"])
+            period_list = period
+            if param_period["type"] != "array":
+                period_list = api.Array([period])
             target_db = ines_transform.add_item_to_DB(target_db, "realized_periods",
-                                         [param_period["alternative_name"], (solve_entity["name"],), "solve"], period,
+                                         [param_period["alternative_name"], (solve_entity["name"],), "solve"], period_list,
                                          value_type="array")
             target_db = ines_transform.add_item_to_DB(target_db, "invest_periods",
-                                         [param_period["alternative_name"], (solve_entity["name"],), "solve"], period,
+                                         [param_period["alternative_name"], (solve_entity["name"],), "solve"], period_list,
                                          value_type="array")
             if param_period["type"] == "array":
                 timeblock_set_array = []
@@ -365,15 +549,15 @@ def create_timeline(source_db, target_db):
                 period__timeblock_set = api.Map(period.values, timeblock_set_array, index_name="period")
             else:
                 period__timeblock_set = api.Map([period], [solve_entity["name"]], index_name="period")
-            #print(period__timeblock_set)
             target_db = ines_transform.add_item_to_DB(target_db, "period_timeblockSet", [param_period["alternative_name"], (solve_entity["name"],), "solve"], period__timeblock_set, value_type="map")
+        
         start_time_params = source_db.get_parameter_value_items(entity_class_name=solve_entity["entity_class_name"],
                                                                 entity_name=solve_entity["name"],
                                                                 parameter_definition_name="start_time")
-        start_time_alternatives = [start_time_params[a]["alternative_name"] for a in range(len(start_time_params))]
         duration_params = source_db.get_parameter_value_items(entity_class_name=solve_entity["entity_class_name"],
-                                                              entity_name=solve_entity["name"],
-                                                              parameter_definition_name="duration")
+                                                            entity_name=solve_entity["name"],
+                                                            parameter_definition_name="duration")
+        start_time_alternatives = [start_time_params[a]["alternative_name"] for a in range(len(start_time_params))]
         duration_alternatives = [duration_params[a]["alternative_name"] for a in range(len(duration_params))]
         match_alternatives = set(start_time_alternatives) & set(duration_alternatives)
         for alt in match_alternatives:
@@ -382,43 +566,42 @@ def create_timeline(source_db, target_db):
             if start_time_param and duration_param:
                 duration_value = api.from_database(duration_param[0]["value"], duration_param[0]["type"])
                 start_time = api.from_database(start_time_param[0]["value"], start_time_param[0]["type"])
-                if isinstance(duration_value, api.Duration):
-                    timeblocks_map = api.Map([str(start_time)], [duration_value.value.days * 24 + duration_value.value.hours + duration_value.value.minutes / 60], index_name="timestep")
-                else:
-                    if len(duration_value) != len(start_time):
-                        exit("duration and start_time parameters have different number of array elements under the same alternative (in same solve-pattern entity) - they need to match")
-                    durations = []
-                    for system_entity in system_entity_names:
-                        timestep_counter = 0
-                        block_start = None
-                        block_iterator = iter(start_time.values)
-                        start_t = next(block_iterator)
-                        durations_counter = 0
-                        for timeline_index in timeline_indexes[system_entity]:
-                            if block_start and timeline_index > block_start.value + duration_value.values[durations_counter].value:
-                                durations.append(timestep_counter)
-                                durations_counter += 1
-                                block_start = None
-                                try:
-                                    start_t = next(block_iterator)
-                                except StopIteration:
-                                    break
-                            if block_start is None and timeline_index == start_t.value:
-                                block_start = start_t
-                                timestep_counter = 0
-                            timestep_counter += 1
-                            #for block in duration_value.values:
-                                #durations.append(block.value.days * 24 + block.value.hours + block.value.minutes / 60 + block.value.seconds / 3600)
-                    timeblocks_map = api.Map(indexes=start_time.values, values=durations, index_name="timestamp")
-                p_value, p_type = api.to_database(timeblocks_map)
-                added, error = target_db.add_parameter_value_item(entity_class_name="timeblockSet",
-                                                                  entity_byname=(solve_entity["name"],),
-                                                                  parameter_definition_name="block_duration",
-                                                                  alternative_name=alt,
-                                                                  value=p_value,
-                                                                  type=p_type)
-                if error:
-                    print("writing block_duration failed: " + error)
+                if isinstance(duration_value, api.Duration):  #only one value
+                    duration_value = list(duration_value)
+                if isinstance(start_time, api.DateTime):
+                    start_time = list(start_time)
+                if len(duration_value) != len(start_time):
+                    exit("duration and start_time parameters have different number of array elements under the same alternative (in same solve-pattern entity) - they need to match")
+                durations = []
+                for system_entity in system_entity_names:
+                    timestep_counter = 0
+                    block_start = None
+                    block_iterator = iter(start_time.values)
+                    start_t = next(block_iterator)
+                    durations_counter = 0
+                    for timeline_index in timeline_indexes[system_entity]:
+                        if block_start and timeline_index > block_start.value + duration_value.values[durations_counter].value:
+                            durations.append(timestep_counter)
+                            durations_counter += 1
+                            block_start = None
+                            try:
+                                start_t = next(block_iterator)
+                            except StopIteration:
+                                break
+                        if block_start is None and np.datetime_as_string(timeline_index) == start_t.value.isoformat():
+                            block_start = start_t
+                            timestep_counter = 0
+                        timestep_counter += 1
+                    timeblocks_map = api.Map(indexes=[str(x) for x in start_time.values], values=durations, index_name="timestamp")
+                    p_value, p_type = api.to_database(timeblocks_map)
+                    added, error = target_db.add_parameter_value_item(entity_class_name="timeblockSet",
+                                                                        entity_byname=(solve_entity["name"],),
+                                                                        parameter_definition_name="block_duration",
+                                                                        alternative_name=alt,
+                                                                        value=p_value,
+                                                                        type=p_type)
+            if error:
+                print("writing block_duration failed: " + error)
         for system_entity in source_db.get_entity_items(entity_class_name="system"):
             added, error = target_db.add_item("entity",
                                                 entity_class_name="timeblockSet__timeline",
@@ -434,7 +617,8 @@ def create_timeline(source_db, target_db):
                                                                    parameter_definition_name="years_represented"):
                 period_years[y_rep_value["alternative_name"]].append(period_entity["name"])
                 years_reped = api.from_database(y_rep_value["value"], y_rep_value["type"])
-                years_represented[y_rep_value["alternative_name"]].append(years_reped)
+                if isinstance(years_reped, api.Duration):
+                    years_represented[y_rep_value["alternative_name"]].append(years_reped.value.years)
 
         for alt, value in period_years.items():
             years_map = api.Map(indexes=value, values=years_represented[alt], index_name="period")
@@ -450,10 +634,139 @@ def create_timeline(source_db, target_db):
                 exit("Not able to add years represented to the solve entity: " + error)
     try:
         target_db.commit_session("Added timeline entities and values")
+    except NothingToCommit:
+        pass
     except DBAPIError as e:
         print("commit timeline parameters error")
     return target_db
 
+def process_stochastic_parameters(source_db, target_db):
+
+    print("inflow")
+    forecasts = source_db.get_parameter_value_items(entity_class_name="node", parameter_definition_name="flow_profile_forecasts")
+    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, "inflow", "node", "node")
+    print("price")
+    forecasts = source_db.get_parameter_value_items(entity_class_name="node", parameter_definition_name="commodity_price_forecasts")
+    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, "price", "node", "node")
+    print("unit availability")
+    forecasts = source_db.get_parameter_value_items(entity_class_name="unit", parameter_definition_name="availability_forecasts")
+    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, "availability", "unit", "unit")
+    print("unit efficiency")
+    forecasts = source_db.get_parameter_value_items(entity_class_name="unit", parameter_definition_name="efficiency_forecasts")
+    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, "efficiency", "unit", "unit")
+    print("link availability")
+    forecasts = source_db.get_parameter_value_items(entity_class_name="link", parameter_definition_name="availability_forecasts")
+    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, "availability", "link", "connection")
+    print("link efficiency")
+    forecasts = source_db.get_parameter_value_items(entity_class_name="link", parameter_definition_name="efficiency_forecasts")
+    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, "efficiency", "link", "connection")
+    print("link operational costs")
+    forecasts = source_db.get_parameter_value_items(entity_class_name="link", parameter_definition_name="operational_cost_forecasts")
+    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, "other_operational_cost", "link", "connection")
+    print("operational costs")
+    forecasts = source_db.get_parameter_value_items(entity_class_name="unit__to_node", parameter_definition_name="operational_cost_forecasts")
+    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, "other_operational_cost", "unit__to_node","unit__outputNode")
+
+    forecasts = source_db.get_parameter_value_items(entity_class_name="node__to_unit", parameter_definition_name="operational_cost_forecasts")
+    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, "other_operational_cost", "node__to_unit", "unit__inputNode", entity_byname_order = [[2], [1]])
+
+    try:
+        target_db.commit_session("Added timeline entities and values")
+    except NothingToCommit:
+        pass
+    except DBAPIError as e:
+        print("commit timeline parameters error")
+    return target_db
+
+def process_single_stochastic_parameter(source_db, target_db, params, target_param, source_class, target_class, entity_byname_order = None):
+
+    set_inter = source_db.get_parameter_value_items(entity_class_name="set", parameter_definition_name="stochastic_forecast_interpolation_factors")
+    set_method = source_db.get_parameter_value_items(entity_class_name="set", parameter_definition_name="stochastic_method")
+    set_entity = source_db.get_entity_items(entity_class_name="set__"+source_class)
+
+    set_realized = None
+    rolling_jump_db = source_db.get_parameter_value_items(entity_class_name="solve_pattern", parameter_definition_name="rolling_jump")
+    rolling_horizon_db = source_db.get_parameter_value_items(entity_class_name="solve_pattern", parameter_definition_name="rolling_horizon")
+    if rolling_jump_db:
+        rolling_jump = api.from_database(rolling_jump_db[0]["value"], rolling_jump_db[0]["type"])
+    if rolling_horizon_db:
+        rolling_horizon =  api.from_database(rolling_horizon_db[0]["value"], rolling_horizon_db[0]["type"])
+
+    for param in params:
+        if entity_byname_order:
+            entity_byname_orig = param["entity_byname"]
+            entity_byname_list = []
+            for target_positions in entity_byname_order:
+                entity_bynames = []
+                for target_position in target_positions:
+                    entity_bynames.append(
+                        entity_byname_orig[int(target_position) - 1]
+                    )
+                entity_byname_list.append("__".join(entity_bynames))
+            entity_byname_tuple = tuple(entity_byname_list)
+        else:
+            entity_byname_tuple = param["entity_byname"]
+
+        target_db = create_4d_from_stochastic_interpolation(target_db, param, target_param, [entity_byname_tuple, target_class],
+                                                            set_entity, set_inter, set_method, set_realized, rolling_jump, rolling_horizon)
+
+    return target_db
+
+def create_4d_from_stochastic_interpolation(target_db, param, target_param, ent_class_target, set_entity, set_inter, set_method, set_realized, rolling_jump, rolling_horizon):        
+    #creates 4d-Map with analysis times from 3d map with the interpolations needed
+    #if no interpolation, the value is directly passed with only type modifications
+    value = api.from_database(param["value"], param["type"])    
+    for s_e in set_entity:
+        if param["entity_byname"] == s_e["entity_byname"][1:]:
+            for s_m in set_method:
+                if s_m["entity_byname"][0] == s_e["entity_byname"][0]:
+                    if api.from_database(s_m["value"], s_m["type"]) == "interpolate_time_series_forecasts":
+                        if api.parameter_value.from_database_to_dimension_count(param["value"], param["type"]) != 2:
+                            exit(f'Stochastic data is not 2d-map when using the stochastic method: interpolate_time_series_forecasts for {param["entity_byname"], param["parameter_definition_name"]}')
+                        for s_i in set_inter:
+                            if s_e["entity_byname"][0] == s_i["entity_byname"][0]:
+                                interpolation_array = api.from_database(s_i["value"], s_i["type"]).values
+                                if set_realized:
+                                    realized_index =  value.indexes.index(api.from_database(set_realized["value"], set_realized["type"]))        
+                                else:
+                                    realized_index = 0
+                                realized_timeseries = value.values[realized_index].values
+                                analysis_time_counter = rolling_jump
+                                for forecast in range(0, len(value.indexes)):
+                                    analysis_times = list()
+                                    inner_maps = list()
+                                    forecast_values = value.values[forecast].values
+                                    forecast_timestamps = value.values[forecast].indexes
+                                    max_timesteps = min(len(forecast_values),len(realized_timeseries))
+                                    for timestep in range(0, len(forecast_values)):
+                                        if analysis_time_counter == rolling_jump:
+                                            analysis_time_counter = 0
+                                            vals = list()
+                                            stamps = list()
+                                            for i in range(0, int(rolling_horizon)):
+                                                if i + timestep < max_timesteps:
+                                                    if i < len(interpolation_array):
+                                                        vals.append(round(interpolation_array[i] * realized_timeseries[i+timestep] + (1-interpolation_array[i])*forecast_values[i+timestep],1))
+                                                    else:
+                                                        vals.append(forecast_values[i+timestep])
+                                                    stamps.append(str(forecast_timestamps[i+timestep]))
+                                            if len(vals) > 0:
+                                                analysis_times.append(str(forecast_timestamps[timestep]))
+                                                inner_maps.append(api.Map(stamps, vals))
+                                        analysis_time_counter += 1
+                                    value.values[forecast] = api.Map(analysis_times,inner_maps)
+                    else:
+                        forecasts = list()
+                        inner_list = list()
+                        for i, ind in enumerate(value.indexes):
+                            values_map = value.values[i]
+                            inner_list.append(api.Map([str(x) for x in values_map.indexes], [float(x) for x in values_map.values]))
+                            forecasts.append(str(ind))
+                        value = api.Map(forecasts, inner_list)
+
+    target_db = ines_transform.add_item_to_DB(target_db, target_param, [param["alternative_name"], ent_class_target[0], ent_class_target[1]], value)
+    
+    return target_db
 
 def params_to_dict(old_param, params):
     for param in params:
