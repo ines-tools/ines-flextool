@@ -11,9 +11,10 @@ link: connection
 unit: unit
 solve_pattern: 
   - solve
-  - model
   - timeblockSet
-system: timeline
+system:
+  - model
+  - timeline
 constraint: constraint
 set: group
 set__unit: 
