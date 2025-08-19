@@ -1,6 +1,14 @@
 import spinedb_api as api
 from spinedb_api import DatabaseMapping
-from ines_tools import ines_transform
+try:
+    from ines_tools import ines_transform
+except:
+    try:
+        from pathlib import Path
+        sys.path.insert(0,str(Path(__file__).parent.parent / "ines-tools"/ "ines_tools"))
+        import ines_transform
+    except:
+        print("Cannot find ines tools as an installed package or as parallel folder")
 from spinedb_api.exception import NothingToCommit
 from sqlalchemy.exc import DBAPIError
 import sys
