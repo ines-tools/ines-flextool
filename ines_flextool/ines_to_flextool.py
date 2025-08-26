@@ -5,7 +5,7 @@ try:
 except:
     try:
         from pathlib import Path
-        sys.path.insert(0,str(Path(__file__).parent.parent / "ines-tools"/ "ines_tools"))
+        sys.path.insert(0,str(Path(__file__).parent.parent.parent / "ines-tools"/ "ines_tools"))
         import ines_transform
     except:
         print("Cannot find ines tools as an installed package or as parallel folder")
