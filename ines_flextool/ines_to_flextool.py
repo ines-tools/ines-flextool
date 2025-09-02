@@ -9,7 +9,6 @@ except:
         import ines_transform
     except:
         print("Cannot find ines tools as an installed package or as parallel folder")
-from spinedb_api.exception import NothingToCommit
 from sqlalchemy.exc import DBAPIError
 import sys
 import yaml
@@ -563,7 +562,7 @@ def create_timeline(source_db, target_db):
                 period__timeblock_set = api.Map(period.values, timeblock_set_array, index_name="period")
             else:
                 period__timeblock_set = api.Map([period], [solve_entity["name"]], index_name="period")
-            target_db = ines_transform.add_item_to_DB(target_db, "period_timeblockSet", [param_period["alternative_name"], (solve_entity["name"],), "solve"], period__timeblock_set, value_type="map")
+            target_db = ines_transform.add_item_to_DB(target_db, "period_timeset", [param_period["alternative_name"], (solve_entity["name"],), "solve"], period__timeblock_set, value_type="map")
         
         start_time_params = source_db.get_parameter_value_items(entity_class_name=solve_entity["entity_class_name"],
                                                                 entity_name=solve_entity["name"],
@@ -608,21 +607,22 @@ def create_timeline(source_db, target_db):
                         timestep_counter += 1
                     timeblocks_map = api.Map(indexes=[str(x) for x in start_time.values], values=durations, index_name="timestamp")
                     p_value, p_type = api.to_database(timeblocks_map)
-                    added, error = target_db.add_parameter_value_item(entity_class_name="timeblockSet",
+                    added, error = target_db.add_parameter_value_item(entity_class_name="timeset",
                                                                         entity_byname=(solve_entity["name"],),
-                                                                        parameter_definition_name="block_duration",
+                                                                        parameter_definition_name="timeset_duration",
                                                                         alternative_name=alt,
                                                                         value=p_value,
                                                                         type=p_type)
             if error:
                 print("writing block_duration failed: " + error)
         for system_entity in source_db.get_entity_items(entity_class_name="system"):
-            added, error = target_db.add_item("entity",
-                                                entity_class_name="timeblockSet__timeline",
-                                                element_name_list=[solve_entity["name"], system_entity["name"]],
-                                                )
-            if error:
-                print("creating entity for timeblockset__timeline failed: " + error)
+            p_value, p_type = api.to_database(system_entity["name"])
+            added, error = target_db.add_parameter_value_item(entity_class_name="timeset",
+                                                              entity_byname=(solve_entity["name"],),
+                                                              parameter_definition_name="timeline",
+                                                              alternative_name=alt,
+                                                              value=p_value,
+                                                              type=p_type)
         period_years = defaultdict(list)
         years_represented = defaultdict(list)
         for period_entity in source_db.get_entity_items(entity_class_name="period"):

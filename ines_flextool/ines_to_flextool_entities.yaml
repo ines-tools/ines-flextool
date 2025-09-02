@@ -12,7 +12,7 @@ unit: unit
 solve_pattern: 
   - solve
   - model
-  - timeblockSet
+  - timeset
 system: timeline
 constraint: constraint
 set: group
@@ -29,5 +29,6 @@ node__to_unit:
 node__link__node:
   connection__node__node: [[2], [1], [3]]
 set__unit_flow:
-  group__unit__node: [[1], [2], [3]]
+  - group__unit__node: [[1], [2], [3]]
+  - group__unit__node: [[1], [3], [2]]
 
