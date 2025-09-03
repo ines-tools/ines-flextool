@@ -1,0 +1,115 @@
+{
+    "project": {
+        "version": 13,
+        "description": "",
+        "settings": {
+            "enable_execute_all": true
+        },
+        "specifications": {
+            "Tool": [
+                {
+                    "type": "path",
+                    "relative": true,
+                    "path": ".spinetoolbox/specifications/Tool/ines_to_flextool.json"
+                }
+            ]
+        },
+        "connections": [
+            {
+                "name": "from Ines db to ines_to_flextool",
+                "from": [
+                    "Ines db",
+                    "right"
+                ],
+                "to": [
+                    "ines_to_flextool",
+                    "left"
+                ],
+                "filter_settings": {
+                    "known_filters": {},
+                    "auto_online": true,
+                    "enabled_filter_types": {
+                        "alternative_filter": false,
+                        "scenario_filter": true
+                    }
+                }
+            },
+            {
+                "name": "from ines_to_flextool to Flextool input db",
+                "from": [
+                    "ines_to_flextool",
+                    "right"
+                ],
+                "to": [
+                    "Flextool input db",
+                    "left"
+                ],
+                "filter_settings": {
+                    "known_filters": {},
+                    "auto_online": true,
+                    "enabled_filter_types": {
+                        "alternative_filter": false,
+                        "scenario_filter": true
+                    }
+                }
+            }
+        ],
+        "jumps": []
+    },
+    "items": {
+        "Ines db": {
+            "type": "Data Store",
+            "description": "",
+            "x": -353.4375,
+            "y": -44.6875,
+            "url": {
+                "dialect": "sqlite",
+                "host": "",
+                "port": "",
+                "database": {
+                    "type": "path",
+                    "relative": true,
+                    "path": "ines-spec.sqlite"
+                },
+                "schema": ""
+            }
+        },
+        "Flextool input db": {
+            "type": "Data Store",
+            "description": "",
+            "x": -66.015625,
+            "y": -42.65625,
+            "url": {
+                "dialect": "sqlite",
+                "host": "",
+                "port": "",
+                "database": {
+                    "type": "path",
+                    "relative": true,
+                    "path": "input_data.sqlite"
+                },
+                "schema": ""
+            }
+        },
+        "ines_to_flextool": {
+            "type": "Tool",
+            "description": "",
+            "x": -215.3125,
+            "y": -41.640625,
+            "specification": "ines_to_flextool",
+            "execute_in_work": false,
+            "cmd_line_args": [
+                {
+                    "type": "resource",
+                    "arg": "db_url@Ines db"
+                },
+                {
+                    "type": "resource",
+                    "arg": "db_url@Flextool input db"
+                }
+            ],
+            "kill_completed_processes": false,
+            "log_process_output": false
+        }
+    }
+}

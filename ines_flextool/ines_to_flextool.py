@@ -1,7 +1,14 @@
 import spinedb_api as api
 from spinedb_api import DatabaseMapping
-from ines_tools import ines_transform
-from spinedb_api.exception import NothingToCommit
+try:
+    from ines_tools import ines_transform
+except:
+    try:
+        from pathlib import Path
+        sys.path.insert(0,str(Path(__file__).parent.parent.parent / "ines-tools"/ "ines_tools"))
+        import ines_transform
+    except:
+        print("Cannot find ines tools as an installed package or as parallel folder")
 from sqlalchemy.exc import DBAPIError
 import sys
 import yaml
@@ -98,13 +105,13 @@ def create_profiles(source_db, target_db):
         set_inter = source_db.get_parameter_value_items(entity_class_name="set", parameter_definition_name="stochastic_forecast_interpolation_factors")
         set_method = source_db.get_parameter_value_items(entity_class_name="set", parameter_definition_name="stochastic_method")
         set_entity = source_db.get_entity_items(entity_class_name="set__"+"unit_flow")
-        set_realized = None
+
         rolling_jump_db = source_db.get_parameter_value_items(entity_class_name="solve_pattern", parameter_definition_name="rolling_jump")
         rolling_horizon_db = source_db.get_parameter_value_items(entity_class_name="solve_pattern", parameter_definition_name="rolling_horizon")
         if rolling_jump_db:
-            rolling_jump = api.from_database(rolling_jump_db[0]["value"], rolling_jump_db[0]["type"])
+            rolling_jump = api.from_database(rolling_jump_db[0]["value"], rolling_jump_db[0]["type"]).value.hours
         if rolling_horizon_db:
-            rolling_horizon =  api.from_database(rolling_horizon_db[0]["value"], rolling_horizon_db[0]["type"])
+            rolling_horizon =  api.from_database(rolling_horizon_db[0]["value"], rolling_horizon_db[0]["type"]).value.hours
 
         for source_entity in source_db.get_entity_items(entity_class_name=entity_class):
             added_entities = [] #just for the possibility of a profile_method without values
@@ -140,28 +147,34 @@ def create_profiles(source_db, target_db):
                 added_entities.append((unit,node,unit+"_fix"))
             for param in profile_limit_upper:
                 if param["entity_byname"] == source_entity["entity_byname"]:
-                    alt_ent_class_target = [param["alternative_name"], (unit+"_upper",), "profile"]
-                    target_db = pass_profile_value(target_db, param, alt_ent_class_target)
+                    profile_limit_upper_realized = param
+                    if not any(param["entity_byname"] == forecast_param["entity_byname"] for forecast_param in profile_limit_upper_forecasts):
+                        alt_ent_class_target = [param["alternative_name"], (unit+"_upper",), "profile"]
+                        target_db = pass_profile_value(target_db, param, alt_ent_class_target)
             for param in profile_limit_lower:
                 if param["entity_byname"] == source_entity["entity_byname"]:
-                    alt_ent_class_target = [param["alternative_name"], (unit+"_lower",), "profile"]
-                    target_db = pass_profile_value(target_db, param, alt_ent_class_target)
+                    profile_limit_lower_realized = param
+                    if not any(param["entity_byname"] == forecast_param["entity_byname"] for forecast_param in profile_limit_lower_forecasts):
+                        alt_ent_class_target = [param["alternative_name"], (unit+"_lower",), "profile"]
+                        target_db = pass_profile_value(target_db, param, alt_ent_class_target)
             for param in profile_limit_fix:
                 if param["entity_byname"] == source_entity["entity_byname"]:
-                    alt_ent_class_target = [param["alternative_name"], (unit+"_fix",), "profile"]
-                    target_db = pass_profile_value(target_db, param, alt_ent_class_target)
+                    profile_limit_fix_realized = param
+                    if not any(param["entity_byname"] == forecast_param["entity_byname"] for forecast_param in profile_limit_fix_forecasts):
+                        alt_ent_class_target = [param["alternative_name"], (unit+"_fix",), "profile"]
+                        target_db = pass_profile_value(target_db, param, alt_ent_class_target)
             for param in profile_limit_upper_forecasts:
                 if param["entity_byname"] == source_entity["entity_byname"]:
-                    target_db = create_4d_from_stochastic_interpolation(target_db, param, "profile", [(unit+"_upper",), "profile"], 
-                                                                        set_entity, set_inter, set_method, set_realized, rolling_jump, rolling_horizon)
+                    target_db = create_4d_from_stochastic_interpolation(target_db, param, profile_limit_upper_realized, "profile", [(unit+"_upper",), "profile"], 
+                                                                        set_entity, set_inter, set_method, rolling_jump, rolling_horizon)
             for param in profile_limit_lower_forecasts:
                 if param["entity_byname"] == source_entity["entity_byname"]:
-                    target_db = create_4d_from_stochastic_interpolation(target_db, param, "profile", [(unit+"_upper",), "profile"], 
-                                                                        set_entity, set_inter, set_method, set_realized, rolling_jump, rolling_horizon)
+                    target_db = create_4d_from_stochastic_interpolation(target_db, param, profile_limit_lower_realized, "profile", [(unit+"_upper",), "profile"], 
+                                                                        set_entity, set_inter, set_method, rolling_jump, rolling_horizon)
             for param in profile_limit_fix_forecasts:
                 if param["entity_byname"] == source_entity["entity_byname"]:
-                    target_db = create_4d_from_stochastic_interpolation(target_db, param, "profile", [(unit+"_upper",), "profile"], 
-                                                                        set_entity, set_inter, set_method, set_realized, rolling_jump, rolling_horizon)
+                    target_db = create_4d_from_stochastic_interpolation(target_db, param, profile_limit_fix_realized, "profile", [(unit+"_upper",), "profile"], 
+                                                                        set_entity, set_inter, set_method, rolling_jump, rolling_horizon)
     
             for param in profile_methods:
                 if param["entity_byname"] == source_entity["entity_byname"]:
@@ -339,9 +352,17 @@ def process_capacities(source_db, target_db):
                     u_to_n_val =  u_to_n_val * 0.001
                 target_db = ines_transform.add_item_to_DB(target_db, "invest_cost", alt_ent_class, u_to_n_val)
             for u_to_n_alt, u_to_n_val in u_to_n_fixed_cost.items():
+                if isinstance(u_to_n_val, api.Map):
+                    u_to_n_val.values = [i * 0.001 for i in u_to_n_val.values] 
+                elif isinstance(u_to_n_val, float):
+                    u_to_n_val =  u_to_n_val * 0.001                
                 alt_ent_class = (u_to_n_alt, unit_source["entity_byname"], "unit")
                 target_db = ines_transform.add_item_to_DB(target_db, "fixed_cost", alt_ent_class, u_to_n_val)
             for u_to_n_alt, u_to_n_val in u_to_n_salvage_value.items():
+                if isinstance(u_to_n_val, api.Map):
+                    u_to_n_val.values = [i * 0.001 for i in u_to_n_val.values] 
+                elif isinstance(u_to_n_val, float):
+                    u_to_n_val =  u_to_n_val * 0.001
                 alt_ent_class = (u_to_n_alt, unit_source["entity_byname"], "unit")
                 target_db = ines_transform.add_item_to_DB(target_db, "salvage_value", alt_ent_class, u_to_n_val)
         # Write 'investment_cost', 'fixed_cost' and 'salvage_value' to FlexTool DB (if investment_cost is defined in unit inputs instead)
@@ -549,7 +570,7 @@ def create_timeline(source_db, target_db):
                 period__timeblock_set = api.Map(period.values, timeblock_set_array, index_name="period")
             else:
                 period__timeblock_set = api.Map([period], [solve_entity["name"]], index_name="period")
-            target_db = ines_transform.add_item_to_DB(target_db, "period_timeblockSet", [param_period["alternative_name"], (solve_entity["name"],), "solve"], period__timeblock_set, value_type="map")
+            target_db = ines_transform.add_item_to_DB(target_db, "period_timeset", [param_period["alternative_name"], (solve_entity["name"],), "solve"], period__timeblock_set, value_type="map")
         
         start_time_params = source_db.get_parameter_value_items(entity_class_name=solve_entity["entity_class_name"],
                                                                 entity_name=solve_entity["name"],
@@ -594,21 +615,22 @@ def create_timeline(source_db, target_db):
                         timestep_counter += 1
                     timeblocks_map = api.Map(indexes=[str(x) for x in start_time.values], values=durations, index_name="timestamp")
                     p_value, p_type = api.to_database(timeblocks_map)
-                    added, error = target_db.add_parameter_value_item(entity_class_name="timeblockSet",
+                    added, error = target_db.add_parameter_value_item(entity_class_name="timeset",
                                                                         entity_byname=(solve_entity["name"],),
-                                                                        parameter_definition_name="block_duration",
+                                                                        parameter_definition_name="timeset_duration",
                                                                         alternative_name=alt,
                                                                         value=p_value,
                                                                         type=p_type)
             if error:
                 print("writing block_duration failed: " + error)
         for system_entity in source_db.get_entity_items(entity_class_name="system"):
-            added, error = target_db.add_item("entity",
-                                                entity_class_name="timeblockSet__timeline",
-                                                element_name_list=[solve_entity["name"], system_entity["name"]],
-                                                )
-            if error:
-                print("creating entity for timeblockset__timeline failed: " + error)
+            p_value, p_type = api.to_database(system_entity["name"])
+            added, error = target_db.add_parameter_value_item(entity_class_name="timeset",
+                                                              entity_byname=(solve_entity["name"],),
+                                                              parameter_definition_name="timeline",
+                                                              alternative_name=alt,
+                                                              value=p_value,
+                                                              type=p_type)
         period_years = defaultdict(list)
         years_represented = defaultdict(list)
         for period_entity in source_db.get_entity_items(entity_class_name="period"):
@@ -617,9 +639,7 @@ def create_timeline(source_db, target_db):
                                                                    parameter_definition_name="years_represented"):
                 period_years[y_rep_value["alternative_name"]].append(period_entity["name"])
                 years_reped = api.from_database(y_rep_value["value"], y_rep_value["type"])
-                if isinstance(years_reped, api.Duration):
-                    years_represented[y_rep_value["alternative_name"]].append(years_reped.value.years)
-
+                years_represented[y_rep_value["alternative_name"]].append(years_reped)
         for alt, value in period_years.items():
             years_map = api.Map(indexes=value, values=years_represented[alt], index_name="period")
             p_value, p_type = api.to_database(years_map)
@@ -632,6 +652,18 @@ def create_timeline(source_db, target_db):
 
             if error:
                 exit("Not able to add years represented to the solve entity: " + error)
+        
+        for param in source_db.get_parameter_value_items(solve_entity["entity_class_name"], entity_name=solve_entity["name"], parameter_definition_name="rolling_jump"):
+            value = api.from_database(param["value"], param["type"])
+            print(value.value)
+            rolling_jump = value.value.hours
+            print(value.value.hours)
+            target_db = ines_transform.add_item_to_DB(target_db, "rolling_solve_jump", [param["alternative_name"], param["entity_byname"], "solve"], rolling_jump)
+        
+        for param in source_db.get_parameter_value_items(solve_entity["entity_class_name"], entity_name=solve_entity["name"], parameter_definition_name="rolling_horizon"):
+            value = api.from_database(param["value"], param["type"])
+            rolling_horizon = value.value.hours
+            target_db = ines_transform.add_item_to_DB(target_db, "rolling_solve_horizon", [param["alternative_name"], param["entity_byname"], "solve"], rolling_horizon)
     try:
         target_db.commit_session("Added timeline entities and values")
     except NothingToCommit:
@@ -643,32 +675,41 @@ def create_timeline(source_db, target_db):
 def process_stochastic_parameters(source_db, target_db):
 
     print("inflow")
+    realized = source_db.get_parameter_value_items(entity_class_name="node", parameter_definition_name="flow_profile")
     forecasts = source_db.get_parameter_value_items(entity_class_name="node", parameter_definition_name="flow_profile_forecasts")
-    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, "inflow", "node", "node")
+    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, realized, "inflow", "node", "node")
     print("price")
+    realized = source_db.get_parameter_value_items(entity_class_name="node", parameter_definition_name="commodity_price")
     forecasts = source_db.get_parameter_value_items(entity_class_name="node", parameter_definition_name="commodity_price_forecasts")
-    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, "price", "node", "node")
+    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, realized, "price", "node", "node")
     print("unit availability")
+    realized = source_db.get_parameter_value_items(entity_class_name="unit", parameter_definition_name="availability")
     forecasts = source_db.get_parameter_value_items(entity_class_name="unit", parameter_definition_name="availability_forecasts")
-    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, "availability", "unit", "unit")
+    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, realized, "availability", "unit", "unit")
     print("unit efficiency")
+    realized = source_db.get_parameter_value_items(entity_class_name="unit", parameter_definition_name="efficiency")
     forecasts = source_db.get_parameter_value_items(entity_class_name="unit", parameter_definition_name="efficiency_forecasts")
-    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, "efficiency", "unit", "unit")
+    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, realized, "efficiency", "unit", "unit")
     print("link availability")
+    realized = source_db.get_parameter_value_items(entity_class_name="link", parameter_definition_name="availability")
     forecasts = source_db.get_parameter_value_items(entity_class_name="link", parameter_definition_name="availability_forecasts")
-    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, "availability", "link", "connection")
+    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, realized, "availability", "link", "connection")
     print("link efficiency")
+    realized = source_db.get_parameter_value_items(entity_class_name="link", parameter_definition_name="efficiency")
     forecasts = source_db.get_parameter_value_items(entity_class_name="link", parameter_definition_name="efficiency_forecasts")
-    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, "efficiency", "link", "connection")
+    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, realized, "efficiency", "link", "connection")
     print("link operational costs")
+    realized = source_db.get_parameter_value_items(entity_class_name="link", parameter_definition_name="operational_cost")
     forecasts = source_db.get_parameter_value_items(entity_class_name="link", parameter_definition_name="operational_cost_forecasts")
-    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, "other_operational_cost", "link", "connection")
+    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, realized, "other_operational_cost", "link", "connection")
     print("operational costs")
+    realized = source_db.get_parameter_value_items(entity_class_name="unit__to_node", parameter_definition_name="operational_cost")
     forecasts = source_db.get_parameter_value_items(entity_class_name="unit__to_node", parameter_definition_name="operational_cost_forecasts")
-    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, "other_operational_cost", "unit__to_node","unit__outputNode")
+    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, realized, "other_operational_cost", "unit__to_node","unit__outputNode")
 
+    realized = source_db.get_parameter_value_items(entity_class_name="node__to_unit", parameter_definition_name="operational_cost")
     forecasts = source_db.get_parameter_value_items(entity_class_name="node__to_unit", parameter_definition_name="operational_cost_forecasts")
-    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, "other_operational_cost", "node__to_unit", "unit__inputNode", entity_byname_order = [[2], [1]])
+    target_db = process_single_stochastic_parameter(source_db, target_db, forecasts, realized, "other_operational_cost", "node__to_unit", "unit__inputNode", entity_byname_order = [[2], [1]])
 
     try:
         target_db.commit_session("Added timeline entities and values")
@@ -678,19 +719,18 @@ def process_stochastic_parameters(source_db, target_db):
         print("commit timeline parameters error")
     return target_db
 
-def process_single_stochastic_parameter(source_db, target_db, params, target_param, source_class, target_class, entity_byname_order = None):
+def process_single_stochastic_parameter(source_db, target_db, params, realized_params ,target_param, source_class, target_class, entity_byname_order = None):
 
     set_inter = source_db.get_parameter_value_items(entity_class_name="set", parameter_definition_name="stochastic_forecast_interpolation_factors")
     set_method = source_db.get_parameter_value_items(entity_class_name="set", parameter_definition_name="stochastic_method")
     set_entity = source_db.get_entity_items(entity_class_name="set__"+source_class)
 
-    set_realized = None
     rolling_jump_db = source_db.get_parameter_value_items(entity_class_name="solve_pattern", parameter_definition_name="rolling_jump")
     rolling_horizon_db = source_db.get_parameter_value_items(entity_class_name="solve_pattern", parameter_definition_name="rolling_horizon")
     if rolling_jump_db:
-        rolling_jump = api.from_database(rolling_jump_db[0]["value"], rolling_jump_db[0]["type"])
+        rolling_jump = api.from_database(rolling_jump_db[0]["value"], rolling_jump_db[0]["type"]).value.hours
     if rolling_horizon_db:
-        rolling_horizon =  api.from_database(rolling_horizon_db[0]["value"], rolling_horizon_db[0]["type"])
+        rolling_horizon =  api.from_database(rolling_horizon_db[0]["value"], rolling_horizon_db[0]["type"]).value.hours
 
     for param in params:
         if entity_byname_order:
@@ -707,37 +747,40 @@ def process_single_stochastic_parameter(source_db, target_db, params, target_par
         else:
             entity_byname_tuple = param["entity_byname"]
 
-        target_db = create_4d_from_stochastic_interpolation(target_db, param, target_param, [entity_byname_tuple, target_class],
-                                                            set_entity, set_inter, set_method, set_realized, rolling_jump, rolling_horizon)
+        for single_param in realized_params:
+            if param["entity_byname"] == single_param["entity_byname"]:
+                realized_param = single_param
+        target_db = create_4d_from_stochastic_interpolation(target_db, param, realized_param, target_param, [entity_byname_tuple, target_class],
+                                                            set_entity, set_inter, set_method, rolling_jump, rolling_horizon)
 
     return target_db
 
-def create_4d_from_stochastic_interpolation(target_db, param, target_param, ent_class_target, set_entity, set_inter, set_method, set_realized, rolling_jump, rolling_horizon):        
+def create_4d_from_stochastic_interpolation(target_db, param, realized_param, target_param, ent_class_target, set_entity, set_inter, set_method, rolling_jump, rolling_horizon):        
     #creates 4d-Map with analysis times from 3d map with the interpolations needed
-    #if no interpolation, the value is directly passed with only type modifications
+    #if no interpolation, the value is passed by adding the realized timeseries to the forecasts
     value = api.from_database(param["value"], param["type"])    
     for s_e in set_entity:
         if param["entity_byname"] == s_e["entity_byname"][1:]:
             for s_m in set_method:
                 if s_m["entity_byname"][0] == s_e["entity_byname"][0]:
+                    realized_timeseries = api.from_database(realized_param["value"], realized_param["type"])
                     if api.from_database(s_m["value"], s_m["type"]) == "interpolate_time_series_forecasts":
                         if api.parameter_value.from_database_to_dimension_count(param["value"], param["type"]) != 2:
                             exit(f'Stochastic data is not 2d-map when using the stochastic method: interpolate_time_series_forecasts for {param["entity_byname"], param["parameter_definition_name"]}')
                         for s_i in set_inter:
                             if s_e["entity_byname"][0] == s_i["entity_byname"][0]:
                                 interpolation_array = api.from_database(s_i["value"], s_i["type"]).values
-                                if set_realized:
-                                    realized_index =  value.indexes.index(api.from_database(set_realized["value"], set_realized["type"]))        
-                                else:
-                                    realized_index = 0
-                                realized_timeseries = value.values[realized_index].values
                                 analysis_time_counter = rolling_jump
+                                timeseries = list()
+                                forecast_names =  list()
+                                timeseries.append(api.Map([str(x) for x in realized_timeseries.indexes], [float(x) for x in realized_timeseries.values]))
+                                forecast_names.append("realized")
                                 for forecast in range(0, len(value.indexes)):
                                     analysis_times = list()
                                     inner_maps = list()
                                     forecast_values = value.values[forecast].values
                                     forecast_timestamps = value.values[forecast].indexes
-                                    max_timesteps = min(len(forecast_values),len(realized_timeseries))
+                                    max_timesteps = min(len(forecast_values),len(realized_timeseries.values))
                                     for timestep in range(0, len(forecast_values)):
                                         if analysis_time_counter == rolling_jump:
                                             analysis_time_counter = 0
@@ -746,7 +789,7 @@ def create_4d_from_stochastic_interpolation(target_db, param, target_param, ent_
                                             for i in range(0, int(rolling_horizon)):
                                                 if i + timestep < max_timesteps:
                                                     if i < len(interpolation_array):
-                                                        vals.append(round(interpolation_array[i] * realized_timeseries[i+timestep] + (1-interpolation_array[i])*forecast_values[i+timestep],1))
+                                                        vals.append(round(interpolation_array[i] * realized_timeseries.values[i+timestep] + (1-interpolation_array[i])*forecast_values[i+timestep],1))
                                                     else:
                                                         vals.append(forecast_values[i+timestep])
                                                     stamps.append(str(forecast_timestamps[i+timestep]))
@@ -755,17 +798,28 @@ def create_4d_from_stochastic_interpolation(target_db, param, target_param, ent_
                                                 inner_maps.append(api.Map(stamps, vals))
                                         analysis_time_counter += 1
                                     value.values[forecast] = api.Map(analysis_times,inner_maps)
+                                    timeseries.append(api.Map(analysis_times,inner_maps))
+                                    forecast_names.append(value.indexes[forecast])
+                            out_value = api.Map(forecast_names, timeseries)
                     else:
-                        forecasts = list()
+                        forecasts_names = list()
                         inner_list = list()
+                        inner_list.append(api.Map([str(x) for x in realized_timeseries.indexes], [float(x) for x in realized_timeseries.values]))
+                        forecast_names.append("realized")
                         for i, ind in enumerate(value.indexes):
                             values_map = value.values[i]
                             inner_list.append(api.Map([str(x) for x in values_map.indexes], [float(x) for x in values_map.values]))
-                            forecasts.append(str(ind))
-                        value = api.Map(forecasts, inner_list)
+                            forecasts_names.append(str(ind))
+                        out_value = api.Map(forecasts_names, inner_list)
 
-    target_db = ines_transform.add_item_to_DB(target_db, target_param, [param["alternative_name"], ent_class_target[0], ent_class_target[1]], value)
-    
+    #target_db = ines_transform.add_item_to_DB(target_db, target_param, [param["alternative_name"], ent_class_target[0], ent_class_target[1]], value)
+    p_val, p_type = api.to_database(out_value)
+    added, updated, error = target_db.add_update_parameter_value_item(entity_class_name=ent_class_target[1],
+                                                                    entity_byname=ent_class_target[0],
+                                                                    alternative_name=param["alternative_name"],
+                                                                    parameter_definition_name=target_param,
+                                                                    type=p_type,
+                                                                    value=p_val)
     return target_db
 
 def params_to_dict(old_param, params):
