@@ -352,9 +352,17 @@ def process_capacities(source_db, target_db):
                     u_to_n_val =  u_to_n_val * 0.001
                 target_db = ines_transform.add_item_to_DB(target_db, "invest_cost", alt_ent_class, u_to_n_val)
             for u_to_n_alt, u_to_n_val in u_to_n_fixed_cost.items():
+                if isinstance(u_to_n_val, api.Map):
+                    u_to_n_val.values = [i * 0.001 for i in u_to_n_val.values] 
+                elif isinstance(u_to_n_val, float):
+                    u_to_n_val =  u_to_n_val * 0.001                
                 alt_ent_class = (u_to_n_alt, unit_source["entity_byname"], "unit")
                 target_db = ines_transform.add_item_to_DB(target_db, "fixed_cost", alt_ent_class, u_to_n_val)
             for u_to_n_alt, u_to_n_val in u_to_n_salvage_value.items():
+                if isinstance(u_to_n_val, api.Map):
+                    u_to_n_val.values = [i * 0.001 for i in u_to_n_val.values] 
+                elif isinstance(u_to_n_val, float):
+                    u_to_n_val =  u_to_n_val * 0.001
                 alt_ent_class = (u_to_n_alt, unit_source["entity_byname"], "unit")
                 target_db = ines_transform.add_item_to_DB(target_db, "salvage_value", alt_ent_class, u_to_n_val)
         # Write 'investment_cost', 'fixed_cost' and 'salvage_value' to FlexTool DB (if investment_cost is defined in unit inputs instead)
