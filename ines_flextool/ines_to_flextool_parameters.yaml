@@ -26,7 +26,10 @@ node:
     storages_existing : existing
   commodity:
     commodity_price: price
-    co2_content: co2_content
+    co2_content:
+      ifexists: {node_type: commodity}
+      target: co2_content
+
 
 unit: 
   unit:

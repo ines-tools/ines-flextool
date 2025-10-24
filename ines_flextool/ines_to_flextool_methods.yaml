@@ -54,6 +54,10 @@ unit:
         startup_method: 'linear'
       integer:
         startup_method: 'binary'
+      linear_with_tiers:
+        startup_method: 'linear'
+      integer_with_tiers:
+        startup_method: 'binary'
     investment_method: 
       not_allowed: 
         invest_method: 'not_allowed'
