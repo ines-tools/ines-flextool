@@ -1,21 +1,21 @@
 import spinedb_api as api
 from spinedb_api import DatabaseMapping
+from spinedb_api.exception import NothingToCommit
+#try:
+    #from ines_tools import ines_transform
+#except:
 try:
-    from ines_tools import ines_transform
+    from pathlib import Path
+    sys.path.insert(0,str(Path(__file__).parent.parent.parent / "ines-tools"/ "ines_tools"))
+    import ines_transform
 except:
-    try:
-        from pathlib import Path
-        sys.path.insert(0,str(Path(__file__).parent.parent.parent / "ines-tools"/ "ines_tools"))
-        import ines_transform
-    except:
-        print("Cannot find ines tools as an installed package or as parallel folder")
+    print("Cannot find ines tools as an installed package or as parallel folder")
 from sqlalchemy.exc import DBAPIError
 import sys
 import yaml
 import numpy as np
 from collections import defaultdict
 from dateutil.relativedelta import relativedelta
-from spinedb_api.exception import NothingToCommit
 
 if len(sys.argv) > 1:
     url_db_in = sys.argv[1]
@@ -43,7 +43,7 @@ def main():
             target_db.purge_items('parameter_value')
             target_db.purge_items('entity')
             target_db.purge_items('alternative')
-            target_db.refresh_session()
+            target_db.purge_items('scenario')
             target_db.commit_session("Purged stuff")
             ## Copy alternatives
             for alternative in source_db.get_alternative_items():
@@ -729,8 +729,22 @@ def process_single_stochastic_parameter(source_db, target_db, params, realized_p
     rolling_horizon_db = source_db.get_parameter_value_items(entity_class_name="solve_pattern", parameter_definition_name="rolling_horizon")
     if rolling_jump_db:
         rolling_jump = api.from_database(rolling_jump_db[0]["value"], rolling_jump_db[0]["type"]).value.hours
+    else:
+        rolling_jump = None
     if rolling_horizon_db:
         rolling_horizon =  api.from_database(rolling_horizon_db[0]["value"], rolling_horizon_db[0]["type"]).value.hours
+    else:
+        rolling_horizon = None
+
+    if params: 
+        if not rolling_horizon or not rolling_jump: 
+            print("Stochastic data without rolling parameters. Cannot transform to flextool. Continuing...")
+            return target_db
+        if not set_method:
+            print("Stochastic data without stochstic method defined. Exiting")
+            sys.exit(-1)
+        if not set_entity:
+            print("Stochastic data, but the entity is not part of a set defining stochastic behaviour")
 
     for param in params:
         if entity_byname_order:
@@ -751,11 +765,11 @@ def process_single_stochastic_parameter(source_db, target_db, params, realized_p
             if param["entity_byname"] == single_param["entity_byname"]:
                 realized_param = single_param
         target_db = create_4d_from_stochastic_interpolation(target_db, param, realized_param, target_param, [entity_byname_tuple, target_class],
-                                                            set_entity, set_inter, set_method, rolling_jump, rolling_horizon)
+                                                            set_entity, set_method, rolling_jump, rolling_horizon, set_inter)
 
     return target_db
 
-def create_4d_from_stochastic_interpolation(target_db, param, realized_param, target_param, ent_class_target, set_entity, set_inter, set_method, rolling_jump, rolling_horizon):        
+def create_4d_from_stochastic_interpolation(target_db, param, realized_param, target_param, ent_class_target, set_entity, set_method, rolling_jump = None, rolling_horizon = None, set_inter = None):        
     #creates 4d-Map with analysis times from 3d map with the interpolations needed
     #if no interpolation, the value is passed by adding the realized timeseries to the forecasts
     value = api.from_database(param["value"], param["type"])    
@@ -766,7 +780,9 @@ def create_4d_from_stochastic_interpolation(target_db, param, realized_param, ta
                     realized_timeseries = api.from_database(realized_param["value"], realized_param["type"])
                     if api.from_database(s_m["value"], s_m["type"]) == "interpolate_time_series_forecasts":
                         if api.parameter_value.from_database_to_dimension_count(param["value"], param["type"]) != 2:
-                            exit(f'Stochastic data is not 2d-map when using the stochastic method: interpolate_time_series_forecasts for {param["entity_byname"], param["parameter_definition_name"]}')
+                            sys.exit(f'Stochastic data is not 2d-map when using the stochastic method: interpolate_time_series_forecasts for {param["entity_byname"], param["parameter_definition_name"]}')
+                        if not set_inter:
+                            sys.exit(f'Stochastic method is interpolate_time_series_forecasts, but no stochastic_forecast_interpolation_factors are not defined')
                         for s_i in set_inter:
                             if s_e["entity_byname"][0] == s_i["entity_byname"][0]:
                                 interpolation_array = api.from_database(s_i["value"], s_i["type"]).values
@@ -812,14 +828,14 @@ def create_4d_from_stochastic_interpolation(target_db, param, realized_param, ta
                             forecasts_names.append(str(ind))
                         out_value = api.Map(forecasts_names, inner_list)
 
-    #target_db = ines_transform.add_item_to_DB(target_db, target_param, [param["alternative_name"], ent_class_target[0], ent_class_target[1]], value)
-    p_val, p_type = api.to_database(out_value)
-    added, updated, error = target_db.add_update_parameter_value_item(entity_class_name=ent_class_target[1],
-                                                                    entity_byname=ent_class_target[0],
-                                                                    alternative_name=param["alternative_name"],
-                                                                    parameter_definition_name=target_param,
-                                                                    type=p_type,
-                                                                    value=p_val)
+    if out_value:
+        p_val, p_type = api.to_database(out_value)
+        added, updated, error = target_db.add_update_parameter_value_item(entity_class_name=ent_class_target[1],
+                                                                        entity_byname=ent_class_target[0],
+                                                                        alternative_name=param["alternative_name"],
+                                                                        parameter_definition_name=target_param,
+                                                                        type=p_type,
+                                                                        value=p_val)
     return target_db
 
 def params_to_dict(old_param, params):
