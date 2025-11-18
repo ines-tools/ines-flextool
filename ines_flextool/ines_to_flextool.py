@@ -1,15 +1,15 @@
 import spinedb_api as api
 from spinedb_api import DatabaseMapping
 from spinedb_api.exception import NothingToCommit
-#try:
-    #from ines_tools import ines_transform
-#except:
 try:
-    from pathlib import Path
-    sys.path.insert(0,str(Path(__file__).parent.parent.parent / "ines-tools"/ "ines_tools"))
-    import ines_transform
+    from ines_tools import ines_transform
 except:
-    print("Cannot find ines tools as an installed package or as parallel folder")
+    try:
+        from pathlib import Path
+        sys.path.insert(0,str(Path(__file__).parent.parent.parent / "ines-tools"/ "ines_tools"))
+        import ines_transform
+    except:
+        print("Cannot find ines tools as an installed package or as parallel folder")
 from sqlalchemy.exc import DBAPIError
 import sys
 import yaml
@@ -584,13 +584,14 @@ def create_timeline(source_db, target_db):
         for alt in match_alternatives:
             start_time_param = [start_time_params[a] for a in range(len(start_time_params)) if alt == start_time_params[a]["alternative_name"]]
             duration_param = [duration_params[a] for a in range(len(duration_params)) if alt == duration_params[a]["alternative_name"]]
+            error = False
             if start_time_param and duration_param:
                 duration_value = api.from_database(duration_param[0]["value"], duration_param[0]["type"])
                 start_time = api.from_database(start_time_param[0]["value"], start_time_param[0]["type"])
                 if isinstance(duration_value, api.Duration):  #only one value
-                    duration_value = list(duration_value)
+                    duration_value = [duration_value]
                 if isinstance(start_time, api.DateTime):
-                    start_time = list(start_time)
+                    start_time = [start_time]
                 if len(duration_value) != len(start_time):
                     exit("duration and start_time parameters have different number of array elements under the same alternative (in same solve-pattern entity) - they need to match")
                 durations = []
@@ -787,21 +788,21 @@ def create_4d_from_stochastic_interpolation(target_db, param, realized_param, ta
                             if s_e["entity_byname"][0] == s_i["entity_byname"][0]:
                                 interpolation_array = api.from_database(s_i["value"], s_i["type"]).values
                                 analysis_time_counter = rolling_jump
-                                timeseries = list()
-                                forecast_names =  list()
+                                timeseries = []
+                                forecast_names =  []
                                 timeseries.append(api.Map([str(x) for x in realized_timeseries.indexes], [float(x) for x in realized_timeseries.values]))
                                 forecast_names.append("realized")
                                 for forecast in range(0, len(value.indexes)):
-                                    analysis_times = list()
-                                    inner_maps = list()
+                                    analysis_times = []
+                                    inner_maps = []
                                     forecast_values = value.values[forecast].values
                                     forecast_timestamps = value.values[forecast].indexes
                                     max_timesteps = min(len(forecast_values),len(realized_timeseries.values))
                                     for timestep in range(0, len(forecast_values)):
                                         if analysis_time_counter == rolling_jump:
                                             analysis_time_counter = 0
-                                            vals = list()
-                                            stamps = list()
+                                            vals = []
+                                            stamps = []
                                             for i in range(0, int(rolling_horizon)):
                                                 if i + timestep < max_timesteps:
                                                     if i < len(interpolation_array):
@@ -818,8 +819,8 @@ def create_4d_from_stochastic_interpolation(target_db, param, realized_param, ta
                                     forecast_names.append(value.indexes[forecast])
                             out_value = api.Map(forecast_names, timeseries)
                     else:
-                        forecasts_names = list()
-                        inner_list = list()
+                        forecasts_names = []
+                        inner_list = []
                         inner_list.append(api.Map([str(x) for x in realized_timeseries.indexes], [float(x) for x in realized_timeseries.values]))
                         forecast_names.append("realized")
                         for i, ind in enumerate(value.indexes):
