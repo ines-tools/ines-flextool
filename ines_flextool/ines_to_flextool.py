@@ -589,9 +589,9 @@ def create_timeline(source_db, target_db):
                 duration_value = api.from_database(duration_param[0]["value"], duration_param[0]["type"])
                 start_time = api.from_database(start_time_param[0]["value"], start_time_param[0]["type"])
                 if isinstance(duration_value, api.Duration):  #only one value
-                    duration_value = [duration_value]
+                    duration_value = api.Array([duration_value],api.Duration)
                 if isinstance(start_time, api.DateTime):
-                    start_time = [start_time]
+                    start_time = api.Array([start_time],api.DateTime)
                 if len(duration_value) != len(start_time):
                     exit("duration and start_time parameters have different number of array elements under the same alternative (in same solve-pattern entity) - they need to match")
                 durations = []
