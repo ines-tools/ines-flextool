@@ -347,20 +347,20 @@ def process_capacities(source_db, target_db):
             for u_to_n_alt, u_to_n_val in u_to_n_investment_cost.items():
                 alt_ent_class = (u_to_n_alt, unit_source["entity_byname"], "unit")
                 if isinstance(u_to_n_val, api.Map):
-                    u_to_n_val.values = [i * 0.001 for i in u_to_n_val.values] 
+                    u_to_n_val.values = [float(i) * 0.001 for i in u_to_n_val.values] 
                 elif isinstance(u_to_n_val, float):
                     u_to_n_val =  u_to_n_val * 0.001
                 target_db = ines_transform.add_item_to_DB(target_db, "invest_cost", alt_ent_class, u_to_n_val)
             for u_to_n_alt, u_to_n_val in u_to_n_fixed_cost.items():
                 if isinstance(u_to_n_val, api.Map):
-                    u_to_n_val.values = [i * 0.001 for i in u_to_n_val.values] 
+                    u_to_n_val.values = [float(i) * 0.001 for i in u_to_n_val.values] 
                 elif isinstance(u_to_n_val, float):
                     u_to_n_val =  u_to_n_val * 0.001                
                 alt_ent_class = (u_to_n_alt, unit_source["entity_byname"], "unit")
                 target_db = ines_transform.add_item_to_DB(target_db, "fixed_cost", alt_ent_class, u_to_n_val)
             for u_to_n_alt, u_to_n_val in u_to_n_salvage_value.items():
                 if isinstance(u_to_n_val, api.Map):
-                    u_to_n_val.values = [i * 0.001 for i in u_to_n_val.values] 
+                    u_to_n_val.values = [float(i) * 0.001 for i in u_to_n_val.values] 
                 elif isinstance(u_to_n_val, float):
                     u_to_n_val =  u_to_n_val * 0.001
                 alt_ent_class = (u_to_n_alt, unit_source["entity_byname"], "unit")
@@ -370,7 +370,7 @@ def process_capacities(source_db, target_db):
             for n_to_u_alt, n_to_u_val in n_to_u_investment_cost.items():
                 alt_ent_class = (n_to_u_alt, unit_source["entity_byname"], "unit")
                 if isinstance(n_to_u_val, api.Map):
-                    n_to_u_val.values = [i * 0.001 for i in n_to_u_val.values] 
+                    n_to_u_val.values = [float(i) * 0.001 for i in n_to_u_val.values] 
                 elif isinstance(n_to_u_val, float):
                     n_to_u_val =  n_to_u_val * 0.001
                 target_db = ines_transform.add_item_to_DB(target_db, "invest_cost", alt_ent_class, n_to_u_val)
@@ -387,6 +387,8 @@ def process_capacities(source_db, target_db):
 
     try:
         target_db.commit_session("Added process capacities")
+    except NothingToCommit:
+        print("No capacity constraints to commit")
     except DBAPIError as e:
         print("commit process capacities error")
     return target_db
