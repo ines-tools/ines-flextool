@@ -37,7 +37,6 @@ with open('ines_to_flextool_entities_to_parameters.yaml', 'r') as file:
 
 
 def main():
-    print(url_db_in)
     with DatabaseMapping(url_db_in) as source_db:
         with DatabaseMapping(url_db_out) as target_db:
             ## Empty the database
