@@ -27,7 +27,7 @@ node:
   commodity:
     commodity_price: price
     co2_content:
-      ifexists: {node_type: commodity}
+      if_exists: {node_type: commodity}
       target: co2_content
 
 
