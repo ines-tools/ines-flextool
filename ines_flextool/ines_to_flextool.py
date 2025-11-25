@@ -560,9 +560,13 @@ def create_timeline(source_db, target_db):
             target_db = ines_transform.add_item_to_DB(target_db, "realized_periods",
                                          [param_period["alternative_name"], (solve_entity["name"],), "solve"], period_list,
                                          value_type="array")
-            target_db = ines_transform.add_item_to_DB(target_db, "invest_periods",
-                                         [param_period["alternative_name"], (solve_entity["name"],), "solve"], period_list,
-                                         value_type="array")
+            if (any(source_db.get_parameter_value_items(entity_class_name="node", parameter_definition_name = "storage_investment_cost")) or 
+                    any(source_db.get_parameter_value_items(entity_class_name="node__to_unit", parameter_definition_name = "investment_cost")) or
+                    any(source_db.get_parameter_value_items(entity_class_name="unit__to_node", parameter_definition_name = "investment_cost")) or
+                    any(source_db.get_parameter_value_items(entity_class_name="link", parameter_definition_name = "investment_cost"))):
+                target_db = ines_transform.add_item_to_DB(target_db, "invest_periods",
+                                            [param_period["alternative_name"], (solve_entity["name"],), "solve"], period_list,
+                                            value_type="array")
             if param_period["type"] == "array":
                 timeblock_set_array = []
                 for period_array_member in period.values:
