@@ -46,7 +46,7 @@ unit:
       partial_load_efficiency:
         conversion_method: 'min_load_efficiency'
       coefficients_only:
-        conversion_method: none
+        conversion_method: 'constant_efficiency'
     startup_method: 
       no_startup:
         startup_method: 'no_startup'
