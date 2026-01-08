@@ -848,11 +848,10 @@ def create_4d_from_stochastic_interpolation(target_db, param, realized_param, ta
 def params_to_dict(old_param, params):
     for param in params:
         value = api.from_database(param["value"], param["type"])
-        if value:
-            if param["alternative_name"] in old_param:
-                old_param[param["alternative_name"]] = old_param[param["alternative_name"]] + value
-            else:
-                old_param[param["alternative_name"]] = value
+        if param["alternative_name"] in old_param:
+            old_param[param["alternative_name"]] = old_param[param["alternative_name"]] + value
+        else:
+            old_param[param["alternative_name"]] = value
     return old_param
 
 
