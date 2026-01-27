@@ -3,9 +3,6 @@
 #     source_parameter:
 #       target_parameter OR 
 #       [target_parameter, optional multiplier, [optional list of lists for dimension positions: separate list for each dimension in the target - can pick dimension names from multiple source dimensions]]
-system:
-  model:
-    discount_rate: discount_rate
 
 constraint:
   constraint:

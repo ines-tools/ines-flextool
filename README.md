@@ -1,7 +1,5 @@
 # ines-flextool
 
-! v0.7.0 should use ines-spec v1.1.1
-
 Export ines model to FlexTool (and import FlexTool model to ines - not done yet).
 
 Usage:
