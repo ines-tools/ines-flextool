@@ -660,11 +660,13 @@ def create_timeline(source_db, target_db):
             if error:
                 exit("Not able to add years represented to the solve entity: " + error)
         
+        for param in source_db.get_parameter_value_items("system", parameter_definition_name="discount_rate"):
+            value = api.from_database(param["value"], param["type"])
+            target_db = ines_transform.add_item_to_DB(target_db, "discount_rate", [param["alternative_name"], (solve_entity["name"],), "model"], value)
+
         for param in source_db.get_parameter_value_items(solve_entity["entity_class_name"], entity_name=solve_entity["name"], parameter_definition_name="rolling_jump"):
             value = api.from_database(param["value"], param["type"])
-            print(value.value)
             rolling_jump = value.value.hours
-            print(value.value.hours)
             target_db = ines_transform.add_item_to_DB(target_db, "rolling_solve_jump", [param["alternative_name"], param["entity_byname"], "solve"], rolling_jump)
         
         for param in source_db.get_parameter_value_items(solve_entity["entity_class_name"], entity_name=solve_entity["name"], parameter_definition_name="rolling_horizon"):
