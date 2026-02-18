@@ -97,7 +97,7 @@ def create_profiles(source_db, target_db):
         profile_limit_upper_forecasts = source_db.get_parameter_value_items(entity_class_name=entity_class, parameter_definition_name="profile_limit_upper_forecasts")
         profile_limit_lower = source_db.get_parameter_value_items(entity_class_name=entity_class, parameter_definition_name="profile_limit_lower")
         profile_limit_lower_forecasts = source_db.get_parameter_value_items(entity_class_name=entity_class, parameter_definition_name="profile_limit_lower_forecasts")
-        profile_limit_fix = source_db.get_parameter_value_items(entity_class_name=entity_class, parameter_definition_name="profile_limit_fix")
+        profile_limit_fix = source_db.get_parameter_value_items(entity_class_name=entity_class, parameter_definition_name="profile_fix")
         profile_limit_fix_forecasts = source_db.get_parameter_value_items(entity_class_name=entity_class, parameter_definition_name="profile_limit_fix_forecasts")
         profile_methods = source_db.get_parameter_value_items(entity_class_name=entity_class, parameter_definition_name="profile_method")
 
