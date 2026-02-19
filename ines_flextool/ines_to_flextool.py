@@ -77,8 +77,6 @@ def main():
             target_db = process_capacities(source_db, target_db)
             print("process efficiencies")
             target_db = process_efficiency(source_db, target_db)
-            print("process profiles")
-            target_db = create_profiles(source_db, target_db)
             ## Create user constraint for unit_flow__unit_flow
             print("process user constraints")
             target_db = process_user_constraints(source_db, target_db)
@@ -87,6 +85,8 @@ def main():
             ## Create a timeline from start_time and duration
             print("create timelines")
             target_db = create_timeline(source_db, target_db)
+            print("process profiles")
+            target_db = create_profiles(source_db, target_db)
 
 
 def create_profiles(source_db, target_db):
@@ -150,19 +150,19 @@ def create_profiles(source_db, target_db):
                     profile_limit_upper_realized = param
                     if not any(param["entity_byname"] == forecast_param["entity_byname"] for forecast_param in profile_limit_upper_forecasts):
                         alt_ent_class_target = [param["alternative_name"], (unit+"_upper",), "profile"]
-                        target_db = pass_profile_value(target_db, param, alt_ent_class_target)
+                        target_db = pass_profile_value(source_db, target_db, param, alt_ent_class_target)
             for param in profile_limit_lower:
                 if param["entity_byname"] == source_entity["entity_byname"]:
                     profile_limit_lower_realized = param
                     if not any(param["entity_byname"] == forecast_param["entity_byname"] for forecast_param in profile_limit_lower_forecasts):
                         alt_ent_class_target = [param["alternative_name"], (unit+"_lower",), "profile"]
-                        target_db = pass_profile_value(target_db, param, alt_ent_class_target)
+                        target_db = pass_profile_value(source_db, target_db, param, alt_ent_class_target)
             for param in profile_limit_fix:
                 if param["entity_byname"] == source_entity["entity_byname"]:
                     profile_limit_fix_realized = param
                     if not any(param["entity_byname"] == forecast_param["entity_byname"] for forecast_param in profile_limit_fix_forecasts):
                         alt_ent_class_target = [param["alternative_name"], (unit+"_fix",), "profile"]
-                        target_db = pass_profile_value(target_db, param, alt_ent_class_target)
+                        target_db = pass_profile_value(source_db, target_db, param, alt_ent_class_target)
             for param in profile_limit_upper_forecasts:
                 if param["entity_byname"] == source_entity["entity_byname"]:
                     target_db = create_4d_from_stochastic_interpolation(target_db, param, profile_limit_upper_realized, "profile", [(unit+"_upper",), "profile"], 
@@ -206,9 +206,15 @@ def create_profiles(source_db, target_db):
         print("commit profile parameters error")
     return target_db
 
-def pass_profile_value(target_db, param, alt_ent_class_target):
+def pass_profile_value(source_db, target_db, param, alt_ent_class_target):
     profile = api.from_database(param["value"], param["type"])
-    value = api.Map([str(x) for x in profile.indexes], [float(x) for x in profile.values])
+    if isinstance(profile, api.TimeSeriesVariableResolution) or isinstance(profile, api.Map):
+        value = api.Map([str(x) for x in profile.indexes], [float(x) for x in profile.values])
+    elif isinstance(profile,float):
+        print("float profile: creating a map with the same value for all time steps")
+        timeline = source_db.get_parameter_value_items(entity_class_name="system", parameter_definition_name="timeline")[0]
+        timeline_value = api.from_database(timeline["value"], timeline["type"])
+        value = api.Map([str(x) for x in timeline_value.indexes], [profile for x in timeline_value.indexes])
     target_db = ines_transform.add_item_to_DB(target_db, "profile", alt_ent_class_target, value, value_type='map')
     return target_db
 
@@ -536,7 +542,7 @@ def create_timeline(source_db, target_db):
         system_entity_names.append(system_entity["name"])
         params = source_db.get_parameter_value_items(entity_class_name="system", entity_name=system_entity["name"], parameter_definition_name="timeline")
         if len(params) > 1:
-            exit("Only one alternative value supported for the timeline parameter of one system entity.")
+            sys.exit("Only one alternative value supported for the timeline parameter of one system entity.")
         for param in params:
             value = api.from_database(param["value"], param["type"])
             if value.VALUE_TYPE == 'time series':
@@ -599,7 +605,7 @@ def create_timeline(source_db, target_db):
                 if isinstance(start_time, api.DateTime):
                     start_time = api.Array([start_time],api.DateTime)
                 if len(duration_value) != len(start_time):
-                    exit("duration and start_time parameters have different number of array elements under the same alternative (in same solve-pattern entity) - they need to match")
+                    sys.exit("duration and start_time parameters have different number of array elements under the same alternative (in same solve-pattern entity) - they need to match")
                 durations = []
                 for system_entity in system_entity_names:
                     timestep_counter = 0
