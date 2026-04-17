@@ -605,13 +605,21 @@ def create_timeline(source_db, target_db):
                     sys.exit("duration and start_time parameters have different number of array elements under the same alternative (in same solve-pattern entity) - they need to match")
                 durations = []
                 for system_entity in system_entity_names:
+                    time_counter = 0
                     timestep_counter = 0
                     block_start = None
                     block_iterator = iter(start_time.values)
                     start_t = next(block_iterator)
                     durations_counter = 0
-                    for timeline_index in timeline_indexes[system_entity]:
-                        if block_start and timeline_index > block_start.value + duration_value.values[durations_counter].value:
+                    for i, timeline_index in enumerate(timeline_indexes[system_entity]):
+                        if block_start is None and np.datetime_as_string(timeline_index) == start_t.value.isoformat():
+                            block_start = start_t
+                            time_counter = 0
+                            timestep_counter = 0
+                        time_counter += timeline_values[system_entity][i]
+                        timestep_counter += 1
+                        if block_start and time_counter >= duration_value.values[durations_counter].value.hours:
+                        #if block_start and timeline_index >= block_start.value + duration_value.values[durations_counter].value:
                             durations.append(timestep_counter)
                             durations_counter += 1
                             block_start = None
@@ -619,10 +627,6 @@ def create_timeline(source_db, target_db):
                                 start_t = next(block_iterator)
                             except StopIteration:
                                 break
-                        if block_start is None and np.datetime_as_string(timeline_index) == start_t.value.isoformat():
-                            block_start = start_t
-                            timestep_counter = 0
-                        timestep_counter += 1
                     timeblocks_map = api.Map(indexes=[str(x) for x in start_time.values], values=durations, index_name="timestamp")
                     p_value, p_type = api.to_database(timeblocks_map)
                     added, error = target_db.add_parameter_value_item(entity_class_name="timeset",
