@@ -1,0 +1,99 @@
+# Reverse of ines_to_flextool_parameters.yaml (FlexTool source -> INES target)
+# source_entity_class:
+#   target_entity_class:
+#     source_parameter:
+#       target_parameter OR
+#       [target_parameter, optional multiplier, [optional list of lists for dimension positions]]
+#
+# Note: stochastic/forecast-capable flows (inflow, availability, efficiency, operational
+# costs, commodity price) are handled in flextool_to_ines.py (process_stochastic_parameters,
+# process_efficiency) so they are intentionally omitted here.
+
+constraint:
+  constraint:
+    constant: constant
+
+node:
+  node:
+    annual_flow: flow_annual
+    penalty_up: penalty_upward
+    penalty_down: penalty_downward
+    virtual_unitsize: storage_capacity
+    interest_rate: storage_interest_rate
+    discount_rate: storage_interest_rate
+    fixed_cost: storage_fixed_cost
+    lifetime: storage_lifetime
+    invest_cost: [storage_investment_cost, 1000]
+    salvage_value: storage_salvage_value
+    existing: storages_existing
+    self_discharge_loss: storage_loss_from_stored_energy
+    storage_state_reference_value: storage_state_value
+    constraint_capacity_coefficient: constraint_storage_count_coefficient
+    constraint_state_coefficient: constraint_storage_state_coefficient
+
+# commodity price / co2_content live on the FlexTool 'commodity' class and reach
+# INES nodes through the commodity__node relationship -> handled in
+# process_commodity_nodes (flextool_to_ines.py), which also sets node_type=commodity.
+
+connection:
+  link:
+    virtual_unitsize: capacity
+    existing: links_existing
+    cumulative_max_capacity: links_max_cumulative
+    cumulative_min_capacity: links_min_cumulative
+    invest_max_period: links_invest_max_period
+    invest_min_period: links_invest_min_period
+    interest_rate: interest_rate
+    discount_rate: interest_rate
+    invest_cost: [investment_cost, 1000]
+    fixed_cost: fixed_cost
+    lifetime: lifetime
+    salvage_value: salvage_value
+    constraint_capacity_coefficient: constraint_link_count_coefficient
+
+unit:
+  unit:
+    interest_rate: interest_rate
+    discount_rate: interest_rate
+    lifetime: lifetime
+    startup_cost: startup_cost
+    min_downtime: [min_downtime, 60]
+    min_uptime: [min_uptime, 60]
+    constraint_capacity_coefficient: constraint_unit_count_coefficient
+
+group:
+  set:
+    max_cumulative_flow: flow_max_cumulative
+    max_instant_flow: flow_max_instant
+    min_cumulative_flow: flow_min_cumulative
+    min_instant_flow: flow_min_instant
+    inertia_limit: inertia_limit
+    invest_max_period: invest_max_period
+    invest_max_total: invest_max_total
+    invest_min_period: invest_min_period
+    invest_min_total: invest_min_total
+    non_synchronous_limit: non_synchronous_limit
+    co2_max_total: co2_max_cumulative
+    co2_max_period: co2_max_period
+    co2_price: co2_price
+    capacity_margin: capacity_margin
+    cumulative_max_capacity: max_cumulative
+    cumulative_min_capacity: min_cumulative
+
+unit__outputNode:
+  unit__to_node:
+    flow_coefficient: conversion_coefficient
+    ramp_cost: ramp_cost
+    ramp_speed_up: ramp_limit_up
+    ramp_speed_down: ramp_limit_down
+    inertia_constant: inertia_constant
+    constraint_flow_coefficient: constraint_flow_coefficient
+
+unit__inputNode:
+  node__to_unit:
+    flow_coefficient: [conversion_coefficient, 1, [[2], [1]]]
+    ramp_cost: [ramp_cost, 1, [[2], [1]]]
+    ramp_speed_up: [ramp_limit_up, 1, [[2], [1]]]
+    ramp_speed_down: [ramp_limit_down, 1, [[2], [1]]]
+    inertia_constant: [inertia_constant, 1, [[2], [1]]]
+    constraint_flow_coefficient: [constraint_flow_coefficient, 1, [[2], [1]]]

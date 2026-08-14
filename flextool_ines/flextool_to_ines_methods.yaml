@@ -1,0 +1,118 @@
+# Reverse of ines_to_flextool_methods.yaml (FlexTool source -> INES target)
+# source_entity_class:
+#   target_entity_class:
+#     source_feature:
+#       source_method:
+#         target_feature: target_method (or [target_method, [dimension positions]])
+node:
+  node:
+    inflow_method:
+      no_inflow:
+        flow_scaling_method: 'no_inflow'
+      use_original:
+        flow_scaling_method: 'use_profile_directly'
+      scale_to_annual_flow:
+        flow_scaling_method: 'scale_to_annual'
+      scale_in_proportion:
+        flow_scaling_method: 'scale_to_annual'
+      scale_to_annual_and_peak_flow:
+        flow_scaling_method: 'scale_to_annual'
+    invest_method:
+      not_allowed:
+        storage_investment_method: 'not_allowed'
+      invest_no_limit:
+        storage_investment_method: 'no_limits'
+      cumulative_limits:
+        storage_investment_method: 'cumulative_limits'
+      invest_period:
+        storage_investment_method: 'period_limits'
+    storage_binding_method:
+      bind_forward_only:
+        storage_state_binding_method: 'leap_over_forward_only'
+      bind_within_period:
+        storage_state_binding_method: 'leap_over_within_period'
+      bind_within_solve:
+        storage_state_binding_method: 'leap_over_within_solve'
+
+unit:
+  unit:
+    conversion_method:
+      constant_efficiency:
+        conversion_method: 'constant_efficiency'
+      min_load_efficiency:
+        conversion_method: 'partial_load_efficiency'
+    startup_method:
+      no_startup:
+        startup_method: 'no_startup'
+      linear:
+        startup_method: 'linear'
+      binary:
+        startup_method: 'integer'
+    invest_method:
+      not_allowed:
+        investment_method: 'not_allowed'
+      invest_no_limit:
+        investment_method: 'no_limits'
+      cumulative_limits:
+        investment_method: 'cumulative_limits'
+      invest_period:
+        investment_method: 'period_limits'
+
+connection:
+  link:
+    transfer_method:
+      no_losses_no_variable_cost:
+        transfer_method: 'no_losses_no_cost'
+      regular:
+        transfer_method: 'regular_linear'
+      exact:
+        transfer_method: 'exact_integer'
+      variable_cost_only:
+        transfer_method: 'only_cost'
+      unidirectional:
+        transfer_method: 'one_way'
+    invest_method:
+      not_allowed:
+        investment_method: 'not_allowed'
+      invest_no_limit:
+        investment_method: 'no_limits'
+      cumulative_limits:
+        investment_method: 'cumulative_limits'
+      invest_period:
+        investment_method: 'period_limits'
+
+constraint:
+  constraint:
+    sense:
+      greater_than:
+        sense: 'greater_than'
+      less_than:
+        sense: 'less_than'
+      equal:
+        sense: 'equal'
+
+group:
+  set:
+    has_capacity_margin:
+      'yes':
+        capacity_margin_method: 'dispatch_based'
+
+unit__outputNode:
+  unit__to_node:
+    ramp_method:
+      ramp_limit:
+        ramp_method: 'ramp_limit'
+      ramp_cost:
+        ramp_method: 'ramp_cost'
+      both:
+        ramp_method: 'ramp_limit_and_cost'
+
+unit__inputNode:
+  node__to_unit:
+    ramp_method:
+      ramp_limit:
+        ramp_method: ['ramp_limit', [2, 1]]
+      ramp_cost:
+        ramp_method: ['ramp_cost', [2, 1]]
+      both:
+        ramp_method: ['ramp_limit_and_cost', [2, 1]]
